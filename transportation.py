@@ -108,7 +108,7 @@ class TransportationProblem:
             for j in range(m):
                 G.add_edge(i, n + j, weight=c[i, j])
         flow = nx.min_cost_flow(G)
-        x = np.zeros((n, m))
+        x = np.zeros((n, m), dtype=np.int64)
         for i in range(n):
             if i not in flow:
                 continue
@@ -123,7 +123,76 @@ class TransportationProblem:
         """
         Solve using the simple successive shortest path method
         """
-        pass
+        x = np.zeros((self.nb_sources, self.nb_sinks), dtype=np.int64)
+        for i in range(self.nb_sources):
+            while self.remaining_supply(i, x) > 0:
+                self.push(i, x)
+        self.check_solution(x)
+        return x
+
+    def push(self, i, x):
+        opt = self.optimal_sink(i)
+        free_demand_after = [
+            l for l in range(opt, self.nb_sinks) if self.remaining_demand(l, x) > 0
+        ]
+        if len(free_demand_after) == 0:
+            self.push_to_sink(i, self.nb_sinks - 1, x)
+            return
+        j = free_demand_after[0]
+        free_demand_before = [l for l in range(0, j) if self.remaining_demand(l, x) > 0]
+        if len(free_demand_before) == 0:
+            self.push_to_sink(i, j, x)
+        elif self.marginal_cost(i, j-1, x) < self.marginal_cost(i, j, x):
+            self.push_to_sink(i, j - 1, x)
+        else:
+            self.push_to_sink(i, j, x)
+
+    def push_to_sink(self, i, j, x):
+        capa = self.path_capacity(i, j, x)
+        print(f"Pushing {capa} from {i} to {j}")
+        while self.remaining_demand(j, x) == 0:
+            x[i, j] += capa
+            i = np.nonzero(x[:, j])[0][0]
+            assert x[i, j] >= capa
+            print(f"\tPushing {i} from {j} to {j-1}")
+            x[i, j] -= capa
+            j -= 1
+        x[i, j] += capa
+        assert (x >= 0).all()
+
+    def marginal_cost(self, i, j, x):
+        c = self.cost(i, j)
+        while self.remaining_demand(j, x) == 0:
+            i = np.nonzero(x[:, j])[0][0]
+            assert x[i, j] > 0
+            assert (x[:i, j] == 0).all()
+            c += self.cost(i, j - 1) - self.cost(i, j)
+            j -= 1
+        return c
+
+    def path_capacity(self, i, j, x):
+        capa = self.remaining_supply(i, x)
+        while self.remaining_demand(j, x) == 0:
+            i = np.nonzero(x[:, j])[0][0]
+            assert (x[:i, j] == 0).all()
+            capa = min(capa, x[i, j])
+            j -= 1
+        capa = min(capa, self.remaining_demand(j, x))
+        assert capa > 0
+        return capa
+
+    def remaining_supply(self, i, x):
+        return self.source_supply[i] - x[i].sum()
+
+    def remaining_demand(self, j, x):
+        return self.sink_demand[j] - x[:, j].sum()
+
+    def optimal_sink(self, i):
+        pos = self.source_pos[i]
+        return np.argmin(np.abs(self.sink_pos - pos))
+
+    def cost(self, i, j):
+        return abs(self.source_pos[i] - self.sink_pos[j])
 
     def full_cost_array(self):
         return np.abs(np.reshape(self.source_pos, (-1, 1)) - self.sink_pos)
@@ -140,5 +209,9 @@ class TransportationProblem:
             raise RuntimeError("Theoretical nonzero bound exceeded")
 
 
-pb = TransportationProblem.make_random(10, 5)
-pb.solve_baseline()
+pb = TransportationProblem.make_random(100, 20)
+x1 = pb.solve_baseline()
+x2 = pb.solve_naive()
+print(pb.solution_cost(x1))
+print(pb.solution_cost(x2))
+assert pb.solution_cost(x1) == pb.solution_cost(x2)

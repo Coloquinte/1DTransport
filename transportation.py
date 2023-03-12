@@ -87,6 +87,50 @@ class TransportationProblem:
         return capa + 1
 
     def solve_baseline(self):
+        return BaselineSolver.solve(
+            self.source_pos, self.sink_pos, self.source_supply, self.sink_demand
+        )
+
+    def solve_naive(self):
+        return NaiveSolver.solve(
+            self.source_pos, self.sink_pos, self.source_supply, self.sink_demand
+        )
+
+    def optimal_sink(self, i):
+        pos = self.source_pos[i]
+        return np.argmin(np.abs(self.sink_pos - pos))
+
+    def cost(self, i, j):
+        assert 0 <= i < self.nb_sources
+        assert 0 <= j < self.nb_sinks
+        return abs(self.source_pos[i] - self.sink_pos[j])
+
+    def delta(self, i, j):
+        assert 0 <= i < self.nb_sources - 1
+        assert 0 <= j < self.nb_sinks - 1
+        return abs(self.source_pos[i] - self.sink_pos[j])
+
+    def full_cost_array(self):
+        return np.abs(np.reshape(self.source_pos, (-1, 1)) - self.sink_pos)
+
+    def full_delta_array(self):
+        """
+        Return the complete delta array
+        """
+        return np.diff(np.diff(self.full_cost_array()), axis=0)
+
+    def _check_nonzero_delta_bound(self):
+        nonzeros = (self.full_delta_array() != 0).sum()
+        if nonzeros > self.nb_sources + self.nb_sinks - 3:
+            raise RuntimeError("Theoretical nonzero bound exceeded")
+
+
+class BaselineSolver(TransportationProblem):
+    @staticmethod
+    def solve(u, v, s, d):
+        return BaselineSolver(u, v, s, d).solve_impl()
+
+    def solve_impl(self):
         """
         Solve using the generic but inefficient solver
         """
@@ -119,7 +163,13 @@ class TransportationProblem:
         self.check_solution(x)
         return x
 
-    def solve_naive(self):
+
+class NaiveSolver(TransportationProblem):
+    @staticmethod
+    def solve(u, v, s, d):
+        return NaiveSolver(u, v, s, d).solve_impl()
+
+    def solve_impl(self):
         """
         Solve using the simple successive shortest path method
         """
@@ -142,7 +192,7 @@ class TransportationProblem:
         free_demand_before = [l for l in range(0, j) if self.remaining_demand(l, x) > 0]
         if len(free_demand_before) == 0:
             self.push_to_sink(i, j, x)
-        elif self.marginal_cost(i, j-1, x) < self.marginal_cost(i, j, x):
+        elif self.marginal_cost(i, j - 1, x) < self.marginal_cost(i, j, x):
             self.push_to_sink(i, j - 1, x)
         else:
             self.push_to_sink(i, j, x)
@@ -186,27 +236,6 @@ class TransportationProblem:
 
     def remaining_demand(self, j, x):
         return self.sink_demand[j] - x[:, j].sum()
-
-    def optimal_sink(self, i):
-        pos = self.source_pos[i]
-        return np.argmin(np.abs(self.sink_pos - pos))
-
-    def cost(self, i, j):
-        return abs(self.source_pos[i] - self.sink_pos[j])
-
-    def full_cost_array(self):
-        return np.abs(np.reshape(self.source_pos, (-1, 1)) - self.sink_pos)
-
-    def full_delta_array(self):
-        """
-        Return the complete delta array
-        """
-        return np.diff(np.diff(self.full_cost_array()), axis=0)
-
-    def _check_nonzero_delta_bound(self):
-        nonzeros = (self.full_delta_array() != 0).sum()
-        if nonzeros > self.nb_sources + self.nb_sinks - 3:
-            raise RuntimeError("Theoretical nonzero bound exceeded")
 
 
 pb = TransportationProblem.make_random(100, 20)

@@ -1,4 +1,5 @@
 import numpy as np
+import queue
 
 
 class TransportationProblem:
@@ -7,10 +8,10 @@ class TransportationProblem:
     """
 
     def __init__(self, u, v, s, d):
-        self.source_pos = u
-        self.sink_pos = v
-        self.source_supply = s
-        self.sink_demand = d
+        self.source_pos = np.array(u, dtype=np.int64)
+        self.sink_pos = np.array(v, dtype=np.int64)
+        self.source_supply = np.array(s, dtype=np.int64)
+        self.sink_demand = np.array(d, dtype=np.int64)
         self.prev_supply = np.cumsum(np.insert(self.source_supply, 0, 0))
         self.prev_demand = np.cumsum(np.insert(self.sink_demand, 0, 0))
         self.nb_sources = len(self.source_pos)
@@ -20,6 +21,9 @@ class TransportationProblem:
         self.check()
 
     def check(self):
+        """
+        Check that the problem meets all preconditions
+        """
         for a in [
             self.source_pos,
             self.sink_pos,
@@ -43,14 +47,36 @@ class TransportationProblem:
         assert np.all(self.source_supply > 0)
         assert np.all(self.sink_demand > 0)
 
-    def check_solution(self, x):
+    def check_dense_solution(self, x):
+        """
+        Check a solution presented as a source x sink 2D array
+        """
         assert x.shape == (self.nb_sources, self.nb_sinks)
         assert np.all(x >= 0)
         assert np.all(x.sum(axis=1) == self.source_supply)
         assert np.all(x.sum(axis=0) <= self.sink_demand)
 
-    def solution_cost(self, x):
+    def check_sparse_solution(self, x):
+        """
+        Check a solution presented as a collection of (source, sink, alloc) tuples
+        """
+        used_supply = np.zeros(self.nb_sources, dtype=np.int64)
+        used_demand = np.zeros(self.nb_sinks, dtype=np.int64)
+        for i, j, a in x:
+            assert a >= 0
+            used_supply[i] += a
+            used_demand[j] += a
+        assert np.all(used_supply == self.source_supply)
+        assert np.all(used_demand <= self.sink_demand)
+
+    def dense_solution_cost(self, x):
         return (x * self.full_cost_array()).sum()
+
+    def sparse_solution_cost(self, x):
+        c = 0
+        for i, j, a in x:
+            c += a * self.cost(i, j)
+        return c
 
     @staticmethod
     def make_random(
@@ -96,26 +122,60 @@ class TransportationProblem:
             self.source_pos, self.sink_pos, self.source_supply, self.sink_demand
         )
 
+    def solve(self):
+        return FastSolver.solve(
+            self.source_pos, self.sink_pos, self.source_supply, self.sink_demand
+        )
+
     def optimal_sink(self, i):
+        """
+        Return the optimal sink to allocate a source, irrespective of available supply and demand
+        """
         pos = self.source_pos[i]
         return np.argmin(np.abs(self.sink_pos - pos))
 
+    def nonzero_delta_range(self, i):
+        # TODO
+        pass
+
     def cost(self, i, j):
+        """
+        Return the cost at a given position
+        """
         assert 0 <= i < self.nb_sources
         assert 0 <= j < self.nb_sinks
         return abs(self.source_pos[i] - self.sink_pos[j])
 
+    def beta(self, i, j):
+        """
+        Return the value of beta at a given position
+
+        See paper for more details
+        """
+        assert 0 <= i <= self.nb_sources
+        assert 0 <= j <= self.nb_sinks
+        return self.prev_demand[j] - self.prev_supply[i]
+
     def delta(self, i, j):
+        """
+        Return the value of delta at a given position
+
+        delta_{ij} = c_{i j} - c_{i j+1} - c_{i+1 j} + c_{i+1 j+1}
+        See paper for more details
+        """
         assert 0 <= i < self.nb_sources - 1
         assert 0 <= j < self.nb_sinks - 1
         return abs(self.source_pos[i] - self.sink_pos[j])
 
     def full_cost_array(self):
+        """
+        Return a complete cost array
+        """
         return np.abs(np.reshape(self.source_pos, (-1, 1)) - self.sink_pos)
 
     def full_delta_array(self):
         """
-        Return the complete delta array
+        Return a complete delta array
         """
         return np.diff(np.diff(self.full_cost_array()), axis=0)
 
@@ -160,24 +220,24 @@ class BaselineSolver(TransportationProblem):
                 if n + j not in flow[i]:
                     continue
                 x[i, j] = flow[i][n + j]
-        self.check_solution(x)
+        self.check_dense_solution(x)
         return x
 
 
 class NaiveSolver(TransportationProblem):
     @staticmethod
     def solve(u, v, s, d):
-        return NaiveSolver(u, v, s, d).solve_impl()
-
-    def solve_impl(self):
         """
         Solve using the simple successive shortest path method
         """
+        return NaiveSolver(u, v, s, d).solve_impl()
+
+    def solve_impl(self):
         x = np.zeros((self.nb_sources, self.nb_sinks), dtype=np.int64)
         for i in range(self.nb_sources):
             while self.remaining_supply(i, x) > 0:
                 self.push(i, x)
-        self.check_solution(x)
+        self.check_dense_solution(x)
         return x
 
     def push(self, i, x):
@@ -199,12 +259,10 @@ class NaiveSolver(TransportationProblem):
 
     def push_to_sink(self, i, j, x):
         capa = self.path_capacity(i, j, x)
-        print(f"Pushing {capa} from {i} to {j}")
         while self.remaining_demand(j, x) == 0:
             x[i, j] += capa
             i = np.nonzero(x[:, j])[0][0]
             assert x[i, j] >= capa
-            print(f"\tPushing {i} from {j} to {j-1}")
             x[i, j] -= capa
             j -= 1
         x[i, j] += capa
@@ -236,11 +294,3 @@ class NaiveSolver(TransportationProblem):
 
     def remaining_demand(self, j, x):
         return self.sink_demand[j] - x[:, j].sum()
-
-
-pb = TransportationProblem.make_random(100, 20)
-x1 = pb.solve_baseline()
-x2 = pb.solve_naive()
-print(pb.solution_cost(x1))
-print(pb.solution_cost(x2))
-assert pb.solution_cost(x1) == pb.solution_cost(x2)

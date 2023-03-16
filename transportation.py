@@ -231,7 +231,7 @@ class TransportationProblem:
                 j += 1
         return ret
 
-    def clean_events(self, events):
+    def cleanup_events(self, events):
         """
         Sort and uniquify a set of (position, slope) events
         """
@@ -303,15 +303,15 @@ class NaiveSolver(TransportationProblem):
         print("Solving with naive method")
         x = np.zeros((self.nb_sources, self.nb_sinks), dtype=np.int64)
         for i in range(self.nb_sources):
-            print(f"Start pushing {i}")
+            print(f"Pushing source {i}, optimal sink {self.optimal_sink(i)}")
             while self.remaining_supply(i, x) > 0:
                 self.push(i, x)
             minpos = self.positional_encoding(i, x)
             maxpos = self.positional_encoding(i, x, True)
             print(f"Pushed {i} to positional encoding {minpos}-{maxpos}")
             enc = [self.positional_encoding(k, x, True) for k in range(i + 1)]
-            print(f"Positions: {enc}")
-            # print(f"Events: {self.encoding_to_events(enc)}")
+            #print(f"Positions: {enc}")
+            print(f"Cost after source {i}: {self.dense_solution_cost(x)}")
         self.check_dense_solution(x)
         return x
 
@@ -410,18 +410,20 @@ class FastSolver(TransportationProblem):
             print(
                 f"Pushing source {i}, optimal sink {o}, initial pos {self.last_position}"
             )
-            print(f"Positions: {self.pos_encoding}")
-            print(f"Events: {self.get_events()}")
+            #print(f"Positions: {self.cleanup_encoding(self.pos_encoding)}")
+            #print(f"Events: {self.get_events()}")
             # While the new source would stick out in the next sink
             while self.last_position > self.beta(i + 1, self.last_occupied_sink + 1):
-                print(
-                    f"\tCurrent position is {self.last_position} but current sink "
-                    f"{self.last_occupied_sink} ends at {self.beta(i + 1, self.last_occupied_sink + 1)}: pushing"
-                )
+                #print(
+                #    f"\tCurrent position is {self.last_position} but current sink "
+                #    f"{self.last_occupied_sink} ends at {self.beta(i + 1, self.last_occupied_sink + 1)}: pushing"
+                #)
                 # Decide whether to push left or right
                 self.decide_push(i, self.last_occupied_sink)
             self.pos_encoding.append(self.last_position)
             self.check()
+            x = self.encoding_to_solution(self.pos_encoding)
+            print(f"Cost after source {i}: {self.sparse_solution_cost(x)}")
         x = self.encoding_to_solution(self.pos_encoding)
         self.check_sparse_solution(x)
         return x
@@ -430,17 +432,17 @@ class FastSolver(TransportationProblem):
         next_sink_pos = self.beta(i + 1, self.last_occupied_sink + 1)
         assert self.last_position > next_sink_pos
         if j == self.nb_sinks - 1:
-            self.last_position = self.total_demand - self.prev_supply[j+1]
-            print(f"\tLast possible position reached: {self.last_position}")
-            return
-        marginal_cost_right = self.cost(i, j + 1) - self.cost(i, j)
-        marginal_cost_left = self.get_slope()
-        if next_sink_pos <= 0 or marginal_cost_left >= marginal_cost_right:
-            print(f"\tReaching new sink {j+1}")
-            self.push_to_new_sink(i, j + 1)
-        else:
             self.push_to_last_sink(i, j)
-            print(f"\tPushed on sink {j}; new position is {self.last_position}")
+            #print(f"\tPushed on sink {j}; new position is {self.last_position}")
+        else:
+            marginal_cost_right = self.cost(i, j + 1) - self.cost(i, j)
+            marginal_cost_left = self.get_slope()
+            if next_sink_pos <= 0 or marginal_cost_left >= marginal_cost_right:
+                #print(f"\tReaching new sink {j+1}")
+                self.push_to_new_sink(i, j + 1)
+            else:
+                self.push_to_last_sink(i, j)
+                #print(f"\tPushed on sink {j}; new position is {self.last_position}")
 
     def push_to_last_sink(self, i, j):
         assert j == self.last_occupied_sink
@@ -467,7 +469,7 @@ class FastSolver(TransportationProblem):
         """
         Return all events currently in the queue
         """
-        return self.clean_events([(-p, s) for p, s in self.prio_queue])
+        return self.cleanup_events([(-p, s) for p, s in self.prio_queue])
 
     def get_slope(self):
         slope = 0

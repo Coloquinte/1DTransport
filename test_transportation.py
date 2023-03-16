@@ -5,14 +5,14 @@ import unittest
 
 
 class TestTransportation(unittest.TestCase):
-    def test_naive(self):
+    def not_done_test_naive(self):
         for i in range(10):
             pb = TransportationProblem.make_random(20, 20, seed=i)
             x1 = pb.solve_baseline()
             x2 = pb.solve_naive()
             self.assertEqual(pb.dense_solution_cost(x1), pb.dense_solution_cost(x2))
 
-    def not_done_test_fast(self):
+    def test_fast(self):
         for i in range(10):
             pb = TransportationProblem.make_random(20, 20, seed=i)
             x1 = pb.solve_naive()

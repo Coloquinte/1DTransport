@@ -13,16 +13,18 @@ class TestTransportation(unittest.TestCase):
             self.assertEqual(pb.dense_solution_cost(x1), pb.dense_solution_cost(x2))
 
     def test_fast_algo(self):
-        for i in range(10):
+        for i in range(100):
             pb = TransportationProblem.make_random(20, 20, seed=i)
             x1 = pb.solve_naive()
             x2 = pb.solve()
             self.assertEqual(pb.dense_solution_cost(x1), pb.sparse_solution_cost(x2))
 
     def test_nonzero_bound(self):
-        for i in range(10):
+        for i in range(100):
             pb = TransportationProblem.make_random(20, 20, seed=i)
-            pb.check_nonzero_delta_bound()
+            nonzeros = (pb.full_delta_array() != 0).sum()
+            if nonzeros > pb.nb_sources + pb.nb_sinks - 3:
+                raise RuntimeError("Theoretical nonzero bound exceeded")
 
     def test_delta_range(self):
         for k in range(100):

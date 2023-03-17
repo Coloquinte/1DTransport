@@ -189,6 +189,9 @@ class TransportationProblem:
         )
 
     def nonzero_delta_range(self, i):
+        """
+        Return the range b <= j < e for which delta_{ij} is non-zero
+        """
         # u_{i} >= v_{j+1} before
         range_min = bisect.bisect_right(self.sink_pos, self.source_pos[i]) - 1
         range_min = max(range_min, 0)
@@ -208,11 +211,6 @@ class TransportationProblem:
         Return a complete delta array
         """
         return np.diff(np.diff(self.full_cost_array()), axis=0)
-
-    def check_nonzero_delta_bound(self):
-        nonzeros = (self.full_delta_array() != 0).sum()
-        if nonzeros > self.nb_sources + self.nb_sinks - 3:
-            raise RuntimeError("Theoretical nonzero bound exceeded")
 
     def cleanup_encoding(self, encoding):
         """
@@ -248,66 +246,6 @@ class TransportationProblem:
             else:
                 j += 1
         return ret
-
-    def solution_to_encoding(self, x):
-        """
-        Obtain the encoding from a solution
-        """
-        ret = []
-        for i in range(self.nb_sources):
-            if np.all(x[i, :] == 0):
-                break
-            j = np.nonzero(x[i])[0][0]
-            pos = 0
-            for l in range(j):
-                pos += self.remaining_demand(l, x)
-            ret.append(pos)
-        return ret
-
-    def remaining_supply(self, i, x):
-        return self.source_supply[i] - x[i].sum()
-
-    def remaining_demand(self, j, x):
-        return self.sink_demand[j] - x[:, j].sum()
-
-    def cleanup_events(self, events):
-        """
-        Sort and uniquify a set of (position, slope) events
-        """
-        d = dict()
-        for p, s in events:
-            if p <= 0:
-                continue
-            if p in d:
-                d[p] += s
-            else:
-                d[p] = s
-        return sorted([(p, s) for p, s in d.items() if s != 0])
-
-    def compute_events(self, encoding):
-        """
-        Compute the events that should be in the queue given a positional encoding
-        """
-        encoding = self.cleanup_encoding(encoding)
-        events = []
-        for i in range(len(encoding)):
-            p = encoding[i]
-            for j in range(self.nb_sinks):
-                c = self.cost(i, j)
-                events.append((min(p, self.beta(i, j + 1)), c))
-                events.append((min(p, self.beta(i, j)), -c))
-                if i + 1 < len(encoding) or self.beta(i + 1, j + 1) >= p:
-                    events.append((min(p, self.beta(i + 1, j + 1)), -c))
-                if i + 1 < len(encoding) or self.beta(i + 1, j) >= p:
-                    events.append((min(p, self.beta(i + 1, j)), c))
-        return self.cleanup_events(events)
-
-    def print_problem(self):
-        print(f"Problem with {self.nb_sources} sources, {self.nb_sinks} sinks")
-        print(f"Source pos: {list(self.source_pos)}")
-        print(f"Sink pos: {list(self.sink_pos)}")
-        print(f"Source supply: {list(self.source_supply)}")
-        print(f"Sink demand: {list(self.sink_demand)}")
 
 
 class BaselineSolver(TransportationProblem):
@@ -418,6 +356,12 @@ class NaiveSolver(TransportationProblem):
         assert capa > 0
         return capa
 
+    def remaining_supply(self, i, x):
+        return self.source_supply[i] - x[i].sum()
+
+    def remaining_demand(self, j, x):
+        return self.sink_demand[j] - x[:, j].sum()
+
 
 class FastSolver(TransportationProblem):
     @staticmethod
@@ -454,32 +398,38 @@ class FastSolver(TransportationProblem):
     def push_once(self, i):
         j = self.last_occupied_sink
         if j == self.nb_sinks - 1:
-            self.push_to_last_sink(i, j)
+            self.push_to_last_sink(i)
         else:
             marginal_cost_right = self.cost(i, j + 1)
             marginal_cost_left = self.get_slope() + self.cost(i, j)
             if self.last_position == 0:
-                self.push_to_new_sink(i, j + 1)
+                self.push_to_new_sink(i)
             elif marginal_cost_left >= marginal_cost_right:
-                self.push_to_new_sink(i, j + 1)
+                self.push_to_new_sink(i)
             else:
-                self.push_to_last_sink(i, j)
+                self.push_to_last_sink(i)
 
-    def push_to_last_sink(self, i, j):
-        # Update the bounds and position
+    def push_to_last_sink(self, i):
+        j = self.last_occupied_sink
+        # Minimum position obtained pushing this source
         min_pos = max(self.beta(i + 1, j + 1), 0)
-        # Remove current position
+        # Slope at the current position
         slope = self.get_slope(pop=True)
         if len(self.events) == 0:
+            # No more event: advance all the way
             self.last_position = min_pos
         else:
+            # Event in the queue: advance until then
             self.last_position = max(min_pos, -self.events[0][0])
         heapq.heappush(self.events, (-self.last_position, slope))
 
-    def push_to_new_sink(self, i, j):
-        self.push_new_sink_events(i, j)
+    def push_to_new_sink(self, i):
+        self.push_new_sink_events(i, self.last_occupied_sink + 1)
 
     def get_slope(self, pop=False):
+        """
+        Obtain the total slope at the current position
+        """
         slope = 0
         while len(self.events) != 0 and self.events[0][0] == -self.last_position:
             slope += self.events[0][1]

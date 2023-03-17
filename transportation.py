@@ -425,7 +425,6 @@ class FastSolver(TransportationProblem):
         return len(self.pos_encoding)
 
     def solve_impl(self):
-        self.print_problem()
         for i in range(self.nb_sources):
             self.push(i)
         x = self.encoding_to_solution(self.pos_encoding)
@@ -438,59 +437,24 @@ class FastSolver(TransportationProblem):
         # Earliest: placed right after the others or at the beginning of the optimal sink
         self.last_position = max(self.last_position, self.beta(i, o))
         self.push_new_sink_events(i, o)
-        print(f"Pushing source {i} to optimal sink {o}, position {self.last_position}")
-        print(f"Events: {self.events}")
-        print(
-            f"Events recomputed: {self.compute_events(self.pos_encoding + [self.last_position])}"
-        )
         while self.last_position > self.beta(i + 1, self.last_occupied_sink + 1):
             self.decide_push(i, self.last_occupied_sink)
         self.pos_encoding.append(self.last_position)
         self.check()
 
-        print(self.compute_events(self.pos_encoding))
-        print(self.events)
-
-        # Check against naive solver
-        x1 = self.sparse_to_dense(self.encoding_to_solution(self.pos_encoding[:-1]))
-        s = NaiveSolver(
-            self.source_pos, self.sink_pos, self.source_supply, self.sink_demand
-        )
-        s.push(i, x1)
-        p1 = self.solution_to_encoding(x1)
-        x1 = self.dense_to_sparse(x1)
-
-        p2 = self.cleanup_encoding(self.pos_encoding)
-        x2 = self.encoding_to_solution(self.pos_encoding)
-
-        c1 = self.sparse_solution_cost(x1)
-        c2 = self.sparse_solution_cost(x2)
-        if c1 != c2:
-            import pdb
-
-            pdb.set_trace()
-
     def decide_push(self, i, j):
         next_sink_pos = self.beta(i + 1, self.last_occupied_sink + 1)
         assert self.last_position > next_sink_pos
         if j == self.nb_sinks - 1:
-            print(f"\tPushing to last sink {j}")
             self.push_to_last_sink(i, j)
         else:
             marginal_cost_right = self.cost(i, j + 1)
             marginal_cost_left = self.get_slope() + self.cost(i, j)
             if self.last_position == 0:
-                print(f"\tPushing right to {j+1}: no room left in left sink")
                 self.push_to_new_sink(i, j + 1)
             elif marginal_cost_left >= marginal_cost_right:
-                print(
-                    f"\tPushing right to {j+1}: cost {marginal_cost_left} vs {marginal_cost_right}"
-                )
                 self.push_to_new_sink(i, j + 1)
             else:
-                print(
-                    f"\tPushing left to {j}: cost {marginal_cost_left} vs {marginal_cost_right}"
-                )
                 self.push_to_last_sink(i, j)
 
     def push_to_last_sink(self, i, j):
@@ -543,9 +507,6 @@ class FastSolver(TransportationProblem):
         for j in range(self.last_occupied_sink):
             pos = self.beta(i, j + 1)
             d = -self.delta(i - 1, j)
-            print(
-                f"Adding event between sources {i-1} and {i} and sinks {j} and {j+1}: position {pos}, slope {d}"
-            )
             self.events.append((pos, d))
         self.events = self.cleanup_events(self.events)
 
@@ -559,9 +520,6 @@ class FastSolver(TransportationProblem):
             pos = self.beta(i, l + 1)
             d = self.cost(i, l) - self.cost(i, l + 1)
             pos = min(pos, self.last_position)
-            print(
-                f"Adding event for source {i} between sinks {l} and {l+1}: position {pos}, slope {d}"
-            )
             self.events.append((pos, d))
         self.events = self.cleanup_events(self.events)
         self.last_occupied_sink = j

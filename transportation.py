@@ -9,17 +9,17 @@ class TransportationProblem:
     """
 
     def __init__(self, u, v, s, d):
-        self.source_pos = np.array(u, dtype=np.int64)
-        self.sink_pos = np.array(v, dtype=np.int64)
-        self.source_supply = np.array(s, dtype=np.int64)
-        self.sink_demand = np.array(d, dtype=np.int64)
-        self.prev_supply = np.cumsum(np.insert(self.source_supply, 0, 0))
-        self.prev_demand = np.cumsum(np.insert(self.sink_demand, 0, 0))
+        self.source_pos = u
+        self.sink_pos = v
+        self.source_supply = s
+        self.sink_demand = d
+        self.prev_supply = np.cumsum(np.insert(self.source_supply, 0, 0)).tolist()
+        self.prev_demand = np.cumsum(np.insert(self.sink_demand, 0, 0)).tolist()
         self.nb_sources = len(self.source_pos)
         self.nb_sinks = len(self.sink_pos)
         self.total_supply = np.sum(self.source_supply)
         self.total_demand = np.sum(self.sink_demand)
-        self.sink_mid = (self.sink_pos[:-1] + self.sink_pos[1:]) / 2
+        self.sink_mid = [(self.sink_pos[i] + self.sink_pos[i+1]) // 2 for i in range(self.nb_sinks - 1)]
         self.check()
 
     def check(self):
@@ -34,20 +34,23 @@ class TransportationProblem:
             self.prev_supply,
             self.prev_demand,
         ]:
-            assert isinstance(a, np.ndarray)
-            assert np.issubdtype(a.dtype, np.integer)
+            assert isinstance(a, list)
+            for b in a:
+                assert isinstance(b, int)
         for a in [self.source_pos, self.source_supply]:
-            assert a.shape == (self.nb_sources,)
+            assert len(a) == self.nb_sources
         for a in [self.sink_pos, self.sink_demand]:
-            assert a.shape == (self.nb_sinks,)
-        assert self.prev_supply.shape == (self.nb_sources + 1,)
-        assert self.prev_demand.shape == (self.nb_sinks + 1,)
+            assert len(a) == self.nb_sinks
+        assert len(self.prev_supply) == self.nb_sources + 1
+        assert len(self.prev_demand) == self.nb_sinks + 1
         # Strictly sorted
-        assert np.all(np.diff(self.source_pos) > 0)
-        assert np.all(np.diff(self.sink_pos) > 0)
+        for i in range(len(self.source_pos) - 1):
+            assert self.source_pos[i] < self.source_pos[i+1]
+        for i in range(len(self.sink_pos) - 1):
+            assert self.sink_pos[i] < self.sink_pos[i+1]
         # Positive supply/demand
-        assert np.all(self.source_supply > 0)
-        assert np.all(self.sink_demand > 0)
+        assert all(d > 0 for d in self.source_supply)
+        assert all(d > 0 for d in self.sink_demand)
 
     def check_dense_solution(self, x):
         """
@@ -113,11 +116,11 @@ class TransportationProblem:
         assert tot_demand >= m
         assert tot_supply <= tot_demand
         rng = np.random.default_rng(seed)
-        u = np.sort(rng.choice(coord_range, n, replace=False))
-        v = np.sort(rng.choice(coord_range, m, replace=False))
+        u = np.sort(rng.choice(coord_range, n, replace=False)).tolist()
+        v = np.sort(rng.choice(coord_range, m, replace=False)).tolist()
         # Supply/demand election so it's non zero and sums right
-        s = TransportationProblem._make_random_capa(rng, n, tot_supply)
-        d = TransportationProblem._make_random_capa(rng, m, tot_demand)
+        s = TransportationProblem._make_random_capa(rng, n, tot_supply).tolist()
+        d = TransportationProblem._make_random_capa(rng, m, tot_demand).tolist()
         return TransportationProblem(u, v, s, d)
 
     @staticmethod

@@ -1,5 +1,6 @@
 import numpy as np
 import heapq
+import bisect
 
 
 class TransportationProblem:
@@ -146,7 +147,7 @@ class TransportationProblem:
         """
         Return the optimal sink to allocate a source, irrespective of available supply and demand
         """
-        return np.searchsorted(self.sink_mid, self.source_pos[i])
+        return bisect.bisect_left(self.sink_mid, self.source_pos[i])
 
     def cost(self, i, j):
         """
@@ -186,10 +187,10 @@ class TransportationProblem:
 
     def nonzero_delta_range(self, i):
         # u_{i} >= v_{j+1} before
-        range_min = np.searchsorted(self.sink_pos, self.source_pos[i], side="right") - 1
+        range_min = bisect.bisect_right(self.sink_pos, self.source_pos[i]) - 1
         range_min = max(range_min, 0)
         # u_{i+1} <= v_{j} after
-        range_max = np.searchsorted(self.sink_pos, self.source_pos[i + 1])
+        range_max = bisect.bisect_left(self.sink_pos, self.source_pos[i + 1])
         range_max = min(range_max, self.nb_sinks - 1)
         return (range_min, range_max)
 

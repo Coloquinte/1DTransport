@@ -188,8 +188,10 @@ class TransportationProblem:
     def nonzero_delta_range(self, i):
         # u_{i} >= v_{j+1} before
         range_min = np.searchsorted(self.sink_pos, self.source_pos[i], side="right") - 1
+        range_min = max(range_min, 0)
         # u_{i+1} <= v_{j} after
         range_max = np.searchsorted(self.sink_pos, self.source_pos[i + 1])
+        range_max = min(range_max, self.nb_sinks - 1)
         return (range_min, range_max)
 
     def full_cost_array(self):
@@ -512,7 +514,8 @@ class FastSolver(TransportationProblem):
         """
         if i == 0:
             return
-        for j in range(self.last_occupied_sink):
+        b, e = self.nonzero_delta_range(i-1)
+        for j in range(b, min(e, self.last_occupied_sink)):
             pos = self.beta(i, j + 1)
             d = self.delta(i - 1, j)
             self.events.append((pos, d))

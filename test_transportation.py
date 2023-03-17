@@ -25,7 +25,7 @@ class TestTransportation(unittest.TestCase):
             pb.check_nonzero_delta_bound()
 
     def test_delta_range(self):
-        for k in range(10):
+        for k in range(100):
             pb = TransportationProblem.make_random(20, 20, seed=k)
             for i in range(pb.nb_sources-1):
                 b, e = pb.nonzero_delta_range(i)

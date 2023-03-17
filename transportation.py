@@ -1,4 +1,5 @@
 import numpy as np
+import bisect
 import heapq
 
 
@@ -178,11 +179,18 @@ class TransportationProblem:
         assert 0 <= i < self.nb_sources - 1
         assert 0 <= j < self.nb_sinks - 1
         return (
-            self.cost(i + 1, j + 1)
-            - self.cost(i, j + 1)
-            - self.cost(i + 1, j)
-            + self.cost(i, j)
+            self.cost(i, j + 1)
+            + self.cost(i + 1, j)
+            - self.cost(i + 1, j + 1)
+            - self.cost(i, j)
         )
+
+    def nonzero_delta_range(self, i):
+        # u_{i} >= v_{j+1} before
+        range_min = np.searchsorted(self.sink_pos, self.source_pos[i], side="right") - 1
+        # u_{i+1} <= v_{j} after
+        range_max = np.searchsorted(self.sink_pos, self.source_pos[i + 1])
+        return (range_min, range_max)
 
     def full_cost_array(self):
         """
@@ -506,7 +514,7 @@ class FastSolver(TransportationProblem):
             return
         for j in range(self.last_occupied_sink):
             pos = self.beta(i, j + 1)
-            d = -self.delta(i - 1, j)
+            d = self.delta(i - 1, j)
             self.events.append((pos, d))
         self.events = self.cleanup_events(self.events)
 

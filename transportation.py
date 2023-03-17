@@ -177,7 +177,12 @@ class TransportationProblem:
         """
         assert 0 <= i < self.nb_sources - 1
         assert 0 <= j < self.nb_sinks - 1
-        return abs(self.source_pos[i] - self.sink_pos[j])
+        return (
+            self.cost(i + 1, j + 1)
+            - self.cost(i, j + 1)
+            - self.cost(i + 1, j)
+            + self.cost(i, j)
+        )
 
     def full_cost_array(self):
         """
@@ -201,7 +206,7 @@ class TransportationProblem:
         Obtain a non-decreasing encoding
         """
         encoding = list(encoding)
-        p = self.total_demand - self.total_supply
+        p = self.total_demand - self.prev_supply[len(encoding)]
         for i in reversed(range(len(encoding))):
             assert p >= 0
             p = min(p, encoding[i])
@@ -231,17 +236,58 @@ class TransportationProblem:
                 j += 1
         return ret
 
+    def solution_to_encoding(self, x):
+        """
+        Obtain the encoding from a solution
+        """
+        ret = []
+        for i in range(self.nb_sources):
+            if np.all(x[i, :] == 0):
+                break
+            j = np.nonzero(x[i])[0][0]
+            pos = 0
+            for l in range(j):
+                pos += self.remaining_demand(l, x)
+            ret.append(pos)
+        return ret
+
+    def remaining_supply(self, i, x):
+        return self.source_supply[i] - x[i].sum()
+
+    def remaining_demand(self, j, x):
+        return self.sink_demand[j] - x[:, j].sum()
+
     def cleanup_events(self, events):
         """
         Sort and uniquify a set of (position, slope) events
         """
         d = dict()
         for p, s in events:
+            if p <= 0:
+                continue
             if p in d:
                 d[p] += s
             else:
                 d[p] = s
-        return sorted(d.items())
+        return sorted([(p, s) for p, s in d.items() if s != 0])
+
+    def compute_events(self, encoding):
+        """
+        Compute the events that should be in the queue given a positional encoding
+        """
+        encoding = self.cleanup_encoding(encoding)
+        events = []
+        for i in range(len(encoding)):
+            p = encoding[i]
+            for j in range(self.nb_sinks):
+                c = self.cost(i, j)
+                events.append((min(p, self.beta(i, j + 1)), c))
+                events.append((min(p, self.beta(i, j)), -c))
+                if i + 1 < len(encoding) or self.beta(i + 1, j + 1) >= p:
+                    events.append((min(p, self.beta(i + 1, j + 1)), -c))
+                if i + 1 < len(encoding) or self.beta(i + 1, j) >= p:
+                    events.append((min(p, self.beta(i + 1, j)), c))
+        return self.cleanup_events(events)
 
     def print_problem(self):
         print(f"Problem with {self.nb_sources} sources, {self.nb_sinks} sinks")
@@ -299,23 +345,17 @@ class NaiveSolver(TransportationProblem):
         return NaiveSolver(u, v, s, d).solve_impl()
 
     def solve_impl(self):
-        self.print_problem()
-        print("Solving with naive method")
         x = np.zeros((self.nb_sources, self.nb_sinks), dtype=np.int64)
         for i in range(self.nb_sources):
-            print(f"Pushing source {i}, optimal sink {self.optimal_sink(i)}")
-            while self.remaining_supply(i, x) > 0:
-                self.push(i, x)
-            minpos = self.positional_encoding(i, x)
-            maxpos = self.positional_encoding(i, x, True)
-            print(f"Pushed {i} to positional encoding {minpos}-{maxpos}")
-            enc = [self.positional_encoding(k, x, True) for k in range(i + 1)]
-            #print(f"Positions: {enc}")
-            print(f"Cost after source {i}: {self.dense_solution_cost(x)}")
+            self.push(i, x)
         self.check_dense_solution(x)
         return x
 
     def push(self, i, x):
+        while self.remaining_supply(i, x) > 0:
+            self.push_once(i, x)
+
+    def push_once(self, i, x):
         opt = self.optimal_sink(i)
         free_demand_after = [
             l for l in range(opt, self.nb_sinks) if self.remaining_demand(l, x) > 0
@@ -327,7 +367,7 @@ class NaiveSolver(TransportationProblem):
         free_demand_before = [l for l in range(0, j) if self.remaining_demand(l, x) > 0]
         if len(free_demand_before) == 0:
             self.push_to_sink(i, j, x)
-        elif self.marginal_cost(i, j - 1, x) < self.marginal_cost(i, j, x):
+        elif self.marginal_cost(i, j - 1, x) < self.cost(i, j):
             self.push_to_sink(i, j - 1, x)
         else:
             self.push_to_sink(i, j, x)
@@ -335,7 +375,6 @@ class NaiveSolver(TransportationProblem):
     def push_to_sink(self, i, j, x):
         capa = self.path_capacity(i, j, x)
 
-        print(f"\tPushing {capa} flow from {i} to {j}")
         while self.remaining_demand(j, x) == 0:
             x[i, j] += capa
             i = np.nonzero(x[:, j])[0][0]
@@ -366,19 +405,6 @@ class NaiveSolver(TransportationProblem):
         assert capa > 0
         return capa
 
-    def remaining_supply(self, i, x):
-        return self.source_supply[i] - x[i].sum()
-
-    def remaining_demand(self, j, x):
-        return self.sink_demand[j] - x[:, j].sum()
-
-    def positional_encoding(self, i, x, incl=False):
-        j = np.nonzero(x[i])[0][0]
-        pos = 0
-        for l in range(j + incl):
-            pos += self.remaining_demand(l, x)
-        return pos
-
 
 class FastSolver(TransportationProblem):
     @staticmethod
@@ -392,7 +418,7 @@ class FastSolver(TransportationProblem):
         self.pos_encoding = []
         self.last_occupied_sink = 0
         self.last_position = 0
-        self.prio_queue = []
+        self.events = []
         super().__init__(u, v, s, d)
 
     def nb_placed_sources(self):
@@ -400,93 +426,113 @@ class FastSolver(TransportationProblem):
 
     def solve_impl(self):
         self.print_problem()
-        print("Solving with fast method")
         for i in range(self.nb_sources):
-            o = self.optimal_sink(i)
-            self.push_new_source_events(i)
-            # Earliest: placed right after the others or at the beginning of the optimal sink
-            self.last_position = max(self.last_position, self.beta(i, o))
-            self.push_new_sink_events(i, o)
-            print(
-                f"Pushing source {i}, optimal sink {o}, initial pos {self.last_position}"
-            )
-            #print(f"Positions: {self.cleanup_encoding(self.pos_encoding)}")
-            #print(f"Events: {self.get_events()}")
-            # While the new source would stick out in the next sink
-            while self.last_position > self.beta(i + 1, self.last_occupied_sink + 1):
-                #print(
-                #    f"\tCurrent position is {self.last_position} but current sink "
-                #    f"{self.last_occupied_sink} ends at {self.beta(i + 1, self.last_occupied_sink + 1)}: pushing"
-                #)
-                # Decide whether to push left or right
-                self.decide_push(i, self.last_occupied_sink)
-            self.pos_encoding.append(self.last_position)
-            self.check()
-            x = self.encoding_to_solution(self.pos_encoding)
-            print(f"Cost after source {i}: {self.sparse_solution_cost(x)}")
+            self.push(i)
         x = self.encoding_to_solution(self.pos_encoding)
         self.check_sparse_solution(x)
         return x
+
+    def push(self, i):
+        o = self.optimal_sink(i)
+        self.push_new_source_events(i)
+        # Earliest: placed right after the others or at the beginning of the optimal sink
+        self.last_position = max(self.last_position, self.beta(i, o))
+        self.push_new_sink_events(i, o)
+        print(f"Pushing source {i} to optimal sink {o}, position {self.last_position}")
+        print(f"Events: {self.events}")
+        print(
+            f"Events recomputed: {self.compute_events(self.pos_encoding + [self.last_position])}"
+        )
+        while self.last_position > self.beta(i + 1, self.last_occupied_sink + 1):
+            self.decide_push(i, self.last_occupied_sink)
+        self.pos_encoding.append(self.last_position)
+        self.check()
+
+        print(self.compute_events(self.pos_encoding))
+        print(self.events)
+
+        # Check against naive solver
+        x1 = self.sparse_to_dense(self.encoding_to_solution(self.pos_encoding[:-1]))
+        s = NaiveSolver(
+            self.source_pos, self.sink_pos, self.source_supply, self.sink_demand
+        )
+        s.push(i, x1)
+        p1 = self.solution_to_encoding(x1)
+        x1 = self.dense_to_sparse(x1)
+
+        p2 = self.cleanup_encoding(self.pos_encoding)
+        x2 = self.encoding_to_solution(self.pos_encoding)
+
+        c1 = self.sparse_solution_cost(x1)
+        c2 = self.sparse_solution_cost(x2)
+        if c1 != c2:
+            import pdb
+
+            pdb.set_trace()
 
     def decide_push(self, i, j):
         next_sink_pos = self.beta(i + 1, self.last_occupied_sink + 1)
         assert self.last_position > next_sink_pos
         if j == self.nb_sinks - 1:
+            print(f"\tPushing to last sink {j}")
             self.push_to_last_sink(i, j)
-            #print(f"\tPushed on sink {j}; new position is {self.last_position}")
         else:
-            marginal_cost_right = self.cost(i, j + 1) - self.cost(i, j)
-            marginal_cost_left = self.get_slope()
-            if next_sink_pos <= 0 or marginal_cost_left >= marginal_cost_right:
-                #print(f"\tReaching new sink {j+1}")
+            marginal_cost_right = self.cost(i, j + 1)
+            marginal_cost_left = self.get_slope() + self.cost(i, j)
+            if self.last_position == 0:
+                print(f"\tPushing right to {j+1}: no room left in left sink")
+                self.push_to_new_sink(i, j + 1)
+            elif marginal_cost_left >= marginal_cost_right:
+                print(
+                    f"\tPushing right to {j+1}: cost {marginal_cost_left} vs {marginal_cost_right}"
+                )
                 self.push_to_new_sink(i, j + 1)
             else:
+                print(
+                    f"\tPushing left to {j}: cost {marginal_cost_left} vs {marginal_cost_right}"
+                )
                 self.push_to_last_sink(i, j)
-                #print(f"\tPushed on sink {j}; new position is {self.last_position}")
 
     def push_to_last_sink(self, i, j):
         assert j == self.last_occupied_sink
         assert i == self.nb_placed_sources()
         # Update the bounds and position
         min_pos = max(self.beta(i + 1, j + 1), 0)
+
+        # Remove current slope
         slope = 0
-        pos = self.last_position
-        while len(self.prio_queue) > 0 and self.prio_queue[0][0] == -self.last_position:
-            slope += self.prio_queue[0][1]
-            heapq.heappop(self.prio_queue)
-        if len(self.prio_queue) == 0:
+        if len(self.events) != 0 and self.events[-1][0] == self.last_position:
+            slope = self.events[-1][1]
+            self.events.pop()
+
+        if len(self.events) == 0:
             self.last_position = min_pos
         else:
-            self.last_position = max(-self.prio_queue[0][0], min_pos)
-        heapq.heappush(self.prio_queue, (-self.last_position, slope))
+            self.last_position = max(min_pos, self.events[-1][0])
+
+        self.events.append((self.last_position, slope))
+        self.events = self.cleanup_events(self.events)
 
     def push_to_new_sink(self, i, j):
         assert j == self.last_occupied_sink + 1
         assert i == self.nb_placed_sources()
         self.push_new_sink_events(i, j)
 
-    def get_events(self):
-        """
-        Return all events currently in the queue
-        """
-        return self.cleanup_events([(-p, s) for p, s in self.prio_queue])
-
     def get_slope(self):
-        slope = 0
-        while len(self.prio_queue) > 0 and self.prio_queue[0][0] == -self.last_position:
-            slope += self.prio_queue[0][1]
-            heapq.heappop(self.prio_queue)
-        if slope != 0:
-            heapq.heappush(self.prio_queue, (-self.last_position, slope))
-        return slope
+        if len(self.events) == 0:
+            return 0
+        p, s = self.events[-1]
+        assert p <= self.last_position
+        if p < self.last_position:
+            return 0
+        return s
 
     def check(self):
         super().check()
         assert all(p >= 0 for p in self.pos_encoding)
         for i, p in enumerate(self.pos_encoding):
             assert p <= self.total_demand - self.prev_supply[i + 1]
-        for p, s in self.prio_queue:
-            assert -p <= self.last_position
+        assert sorted(self.events) == self.events
 
     def push_new_source_events(self, i):
         """
@@ -495,11 +541,13 @@ class FastSolver(TransportationProblem):
         if i == 0:
             return
         for j in range(self.last_occupied_sink):
-            pos = self.beta(i + 1, j + 1)
-            d = self.delta(i - 1, j)
-            if pos > 0 and d != 0 and pos <= self.last_position:
-                print(f"\t\tNew source event {i} {j} at {pos} slope {d}")
-            self.push_event(pos, d)
+            pos = self.beta(i, j + 1)
+            d = -self.delta(i - 1, j)
+            print(
+                f"Adding event between sources {i-1} and {i} and sinks {j} and {j+1}: position {pos}, slope {d}"
+            )
+            self.events.append((pos, d))
+        self.events = self.cleanup_events(self.events)
 
     def push_new_sink_events(self, i, j):
         """
@@ -508,21 +556,12 @@ class FastSolver(TransportationProblem):
         if j <= self.last_occupied_sink:
             return
         for l in range(self.last_occupied_sink, j):
-            pos = self.beta(i, j)
+            pos = self.beta(i, l + 1)
             d = self.cost(i, l) - self.cost(i, l + 1)
-            if pos > 0 and d != 0 and pos <= self.last_position:
-                print(f"\t\tNew sink event {i} {j} at {pos} slope {d}")
-            self.push_event(pos, d)
+            pos = min(pos, self.last_position)
+            print(
+                f"Adding event for source {i} between sinks {l} and {l+1}: position {pos}, slope {d}"
+            )
+            self.events.append((pos, d))
+        self.events = self.cleanup_events(self.events)
         self.last_occupied_sink = j
-
-    def push_event(self, pos, slope):
-        if pos <= 0:
-            # Unused event anyway
-            return
-        if slope == 0:
-            # There's nothing there
-            return
-        if pos > self.last_position:
-            # The event is already passed; happens when pushing to a new sink
-            return
-        heapq.heappush(self.prio_queue, (-pos, slope))

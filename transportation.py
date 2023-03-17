@@ -1,5 +1,4 @@
 import numpy as np
-import bisect
 import heapq
 
 
@@ -19,6 +18,7 @@ class TransportationProblem:
         self.nb_sinks = len(self.sink_pos)
         self.total_supply = np.sum(self.source_supply)
         self.total_demand = np.sum(self.sink_demand)
+        self.sink_mid = (self.sink_pos[:-1] + self.sink_pos[1:]) / 2
         self.check()
 
     def check(self):
@@ -146,8 +146,7 @@ class TransportationProblem:
         """
         Return the optimal sink to allocate a source, irrespective of available supply and demand
         """
-        pos = self.source_pos[i]
-        return np.argmin(np.abs(self.sink_pos - pos))
+        return np.searchsorted(self.sink_mid, self.source_pos[i])
 
     def cost(self, i, j):
         """
@@ -431,9 +430,6 @@ class FastSolver(TransportationProblem):
         self.events = []
         super().__init__(u, v, s, d)
 
-    def nb_placed_sources(self):
-        return len(self.pos_encoding)
-
     def solve_impl(self):
         for i in range(self.nb_sources):
             self.push(i)
@@ -448,13 +444,11 @@ class FastSolver(TransportationProblem):
         self.last_position = max(self.last_position, self.beta(i, o))
         self.push_new_sink_events(i, o)
         while self.last_position > self.beta(i + 1, self.last_occupied_sink + 1):
-            self.decide_push(i, self.last_occupied_sink)
+            self.push_once(i)
         self.pos_encoding.append(self.last_position)
-        self.check()
 
-    def decide_push(self, i, j):
-        next_sink_pos = self.beta(i + 1, self.last_occupied_sink + 1)
-        assert self.last_position > next_sink_pos
+    def push_once(self, i):
+        j = self.last_occupied_sink
         if j == self.nb_sinks - 1:
             self.push_to_last_sink(i, j)
         else:
@@ -468,45 +462,33 @@ class FastSolver(TransportationProblem):
                 self.push_to_last_sink(i, j)
 
     def push_to_last_sink(self, i, j):
-        assert j == self.last_occupied_sink
-        assert i == self.nb_placed_sources()
         # Update the bounds and position
         min_pos = max(self.beta(i + 1, j + 1), 0)
-
-        # Remove current slope
-        slope = 0
-        if len(self.events) != 0 and self.events[-1][0] == self.last_position:
-            slope = self.events[-1][1]
-            self.events.pop()
-
+        # Remove current position
+        slope = self.get_slope(pop=True)
         if len(self.events) == 0:
             self.last_position = min_pos
         else:
-            self.last_position = max(min_pos, self.events[-1][0])
-
-        self.events.append((self.last_position, slope))
-        self.events = self.cleanup_events(self.events)
+            self.last_position = max(min_pos, -self.events[0][0])
+        heapq.heappush(self.events, (-self.last_position, slope))
 
     def push_to_new_sink(self, i, j):
-        assert j == self.last_occupied_sink + 1
-        assert i == self.nb_placed_sources()
         self.push_new_sink_events(i, j)
 
-    def get_slope(self):
-        if len(self.events) == 0:
-            return 0
-        p, s = self.events[-1]
-        assert p <= self.last_position
-        if p < self.last_position:
-            return 0
-        return s
+    def get_slope(self, pop=False):
+        slope = 0
+        while len(self.events) != 0 and self.events[0][0] == -self.last_position:
+            slope += self.events[0][1]
+            heapq.heappop(self.events)
+        if not pop and slope != 0:
+            heapq.heappush(self.events, (-self.last_position, slope))
+        return slope
 
     def check(self):
         super().check()
         assert all(p >= 0 for p in self.pos_encoding)
         for i, p in enumerate(self.pos_encoding):
             assert p <= self.total_demand - self.prev_supply[i + 1]
-        assert sorted(self.events) == self.events
 
     def push_new_source_events(self, i):
         """
@@ -514,12 +496,11 @@ class FastSolver(TransportationProblem):
         """
         if i == 0:
             return
-        b, e = self.nonzero_delta_range(i-1)
+        b, e = self.nonzero_delta_range(i - 1)
         for j in range(b, min(e, self.last_occupied_sink)):
             pos = self.beta(i, j + 1)
             d = self.delta(i - 1, j)
-            self.events.append((pos, d))
-        self.events = self.cleanup_events(self.events)
+            heapq.heappush(self.events, (-pos, d))
 
     def push_new_sink_events(self, i, j):
         """
@@ -531,6 +512,5 @@ class FastSolver(TransportationProblem):
             pos = self.beta(i, l + 1)
             d = self.cost(i, l) - self.cost(i, l + 1)
             pos = min(pos, self.last_position)
-            self.events.append((pos, d))
-        self.events = self.cleanup_events(self.events)
+            heapq.heappush(self.events, (-pos, d))
         self.last_occupied_sink = j

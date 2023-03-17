@@ -5,14 +5,14 @@ import unittest
 
 
 class TestTransportation(unittest.TestCase):
-    def test_naive(self):
+    def test_naive_algo(self):
         for i in range(10):
             pb = TransportationProblem.make_random(20, 20, seed=i)
             x1 = pb.solve_baseline()
             x2 = pb.solve_naive()
             self.assertEqual(pb.dense_solution_cost(x1), pb.dense_solution_cost(x2))
 
-    def test_fast(self):
+    def test_fast_algo(self):
         for i in range(10):
             pb = TransportationProblem.make_random(20, 20, seed=i)
             x1 = pb.solve_naive()
@@ -27,15 +27,16 @@ class TestTransportation(unittest.TestCase):
     def test_delta_range(self):
         for k in range(100):
             pb = TransportationProblem.make_random(20, 20, seed=k)
-            for i in range(pb.nb_sources-1):
+            for i in range(pb.nb_sources - 1):
                 b, e = pb.nonzero_delta_range(i)
-                for j in range(pb.nb_sinks-1):
+                for j in range(pb.nb_sinks - 1):
                     if j < b:
                         assert pb.delta(i, j) == 0
                     elif j >= e:
                         assert pb.delta(i, j) == 0
                     else:
                         assert pb.delta(i, j) != 0
+
 
 if __name__ == "__main__":
     unittest.main()

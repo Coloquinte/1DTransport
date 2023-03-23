@@ -2,7 +2,6 @@
 #include "transportation_1d.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -40,12 +39,12 @@ void Transportation1d::flushPositions() {
   }
 }
 
-int Transportation1d::optimalSink(int i) const {
-  int j = 0;
+void Transportation1d::updateOptimalSink(int i) {
+  int j = optimalSink;
   while (j + 1 < nbSinks() && cost(i, j) >= cost(i, j + 1)) {
     ++j;
   }
-  return j;
+  optimalSink = j;
 }
 
 Transportation1d::Solution Transportation1d::solve() {
@@ -61,10 +60,10 @@ Transportation1d::Solution Transportation1d::solve() {
 }
 
 void Transportation1d::push(int i) {
-  int o = optimalSink(i);
+  updateOptimalSink(i);
   pushNewSourceEvents(i);
-  lastPosition = std::max(lastPosition, D[o] - S[i]);
-  pushNewSinkEvents(i, o);
+  lastPosition = std::max(lastPosition, D[optimalSink] - S[i]);
+  pushNewSinkEvents(i, optimalSink);
   while (lastPosition > D[lastOccupiedSink + 1] - S[i + 1]) {
     pushOnce(i);
   }
@@ -108,7 +107,11 @@ void Transportation1d::pushNewSourceEvents(int i) {
   if (i == 0) {
     return;
   }
-  for (int j = 0; j < lastOccupiedSink; ++j) {
+  int b = std::upper_bound(v.begin(), v.end(), u[i - 1]) - v.begin();
+  b = std::max(b - 1, 0);
+  int e = std::lower_bound(v.begin(), v.end(), u[i]) - v.begin();
+  e = std::min(e, lastOccupiedSink);
+  for (int j = b; j < e; ++j) {
     long long pos = D[j + 1] - S[i];
     long long d = delta(i - 1, j);
     events.emplace(pos, d);
@@ -161,22 +164,6 @@ Transportation1d::Solution Transportation1d::computeSolution() {
     }
   }
   return ret;
-}
-
-void Transportation1d::checkPositionsValid() const {
-  if (p.empty()) return;
-  if (p.front() < 0LL) {
-    throw std::runtime_error("First source is scheduled too early");
-  }
-  int lastInd = p.size() - 1;
-  if (p[lastInd] > totalDemand() - S[lastInd + 1]) {
-    throw std::runtime_error("Last source is scheduled too late");
-  }
-  for (int i = 0; i + 1 < p.size(); ++i) {
-    if (p[i] > p[i + 1]) {
-      throw std::runtime_error("Positions overlap");
-    }
-  }
 }
 
 void Transportation1d::checkSolutionValid(const Solution &alloc) const {

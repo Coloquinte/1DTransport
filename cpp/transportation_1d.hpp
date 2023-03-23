@@ -46,11 +46,6 @@ class Transportation1d {
   long long totalDemand() const { return D.back(); };
 
   /**
-   * @brief Get the optimal sink to place a source
-   */
-  int optimalSink(int i) const;
-
-  /**
    * @brief Compute the cost of allocating a source to a sink
    */
   long long cost(int i, int j) const { return std::abs(u[i] - v[j]); }
@@ -119,11 +114,6 @@ class Transportation1d {
   void flushPositions();
 
   /**
-   * @brief Check that the positions are valid
-   */
-  void checkPositionsValid() const;
-
-  /**
    * @brief Compute the current solution
    */
   Solution computeSolution();
@@ -163,6 +153,11 @@ class Transportation1d {
    */
   long long getSlope(bool pop = false);
 
+  /**
+   * @brief Update the optimal sink
+   */
+  void updateOptimalSink(int i);
+
  private:
   // Problem data
   std::vector<long long> u;
@@ -179,4 +174,5 @@ class Transportation1d {
   PrioQueue events;
   long long lastPosition;
   int lastOccupiedSink;
+  int optimalSink;
 };

@@ -9,15 +9,15 @@
 #include <queue>
 #include <stdexcept>
 
-Transportation1d::Transportation1d(const std::vector<long long> &u,
-                                   const std::vector<long long> &v,
-                                   const std::vector<long long> &s,
-                                   const std::vector<long long> &d)
+Transportation1dSolver::Transportation1dSolver(std::vector<long long> &&u,
+                                               std::vector<long long> &&v,
+                                               std::vector<long long> &&s,
+                                               std::vector<long long> &&d)
     : u(u), v(v), s(s), d(d) {
   setupData();
 }
 
-void Transportation1d::setupData() {
+void Transportation1dSolver::setupData() {
   D.reserve(nbSinks() + 1);
   D.push_back(0LL);
   for (long long c : d) {
@@ -30,7 +30,7 @@ void Transportation1d::setupData() {
   }
 }
 
-void Transportation1d::flushPositions() {
+void Transportation1dSolver::flushPositions() {
   // Flush constraints from the right
   long long maxPos = totalDemand() - S[p.size()];
   for (int i = p.size() - 1; i >= 0; --i) {
@@ -39,7 +39,7 @@ void Transportation1d::flushPositions() {
   }
 }
 
-void Transportation1d::updateOptimalSink(int i) {
+void Transportation1dSolver::updateOptimalSink(int i) {
   int j = optimalSink;
   while (j + 1 < nbSinks() && cost(i, j) >= cost(i, j + 1)) {
     ++j;
@@ -47,7 +47,7 @@ void Transportation1d::updateOptimalSink(int i) {
   optimalSink = j;
 }
 
-Transportation1d::Solution Transportation1d::solve() {
+Transportation1dSolver::Solution Transportation1dSolver::solve() {
   p.clear();
   p.reserve(nbSources());
   events = PrioQueue();
@@ -56,10 +56,11 @@ Transportation1d::Solution Transportation1d::solve() {
   for (int i = 0; i < nbSources(); ++i) {
     push(i);
   }
+  flushPositions();
   return computeSolution();
 }
 
-void Transportation1d::push(int i) {
+void Transportation1dSolver::push(int i) {
   updateOptimalSink(i);
   pushNewSourceEvents(i);
   lastPosition = std::max(lastPosition, D[optimalSink] - S[i]);
@@ -70,7 +71,7 @@ void Transportation1d::push(int i) {
   p.push_back(lastPosition);
 }
 
-void Transportation1d::pushOnce(int i) {
+void Transportation1dSolver::pushOnce(int i) {
   int j = lastOccupiedSink;
   if (j == nbSinks() - 1) {
     pushToLastSink(i);
@@ -87,7 +88,7 @@ void Transportation1d::pushOnce(int i) {
   }
 }
 
-void Transportation1d::pushToLastSink(int i) {
+void Transportation1dSolver::pushToLastSink(int i) {
   int j = lastOccupiedSink;
   long long minPos = std::max(D[j + 1] - S[i + 1], 0LL);
   long long slope = getSlope(true);
@@ -96,14 +97,16 @@ void Transportation1d::pushToLastSink(int i) {
   } else {
     lastPosition = std::max(minPos, events.top().first);
   }
-  events.emplace(lastPosition, slope);
+  if (lastPosition > 0LL) {
+    events.emplace(lastPosition, slope);
+  }
 }
 
-void Transportation1d::pushToNewSink(int i) {
+void Transportation1dSolver::pushToNewSink(int i) {
   pushNewSinkEvents(i, lastOccupiedSink + 1);
 }
 
-void Transportation1d::pushNewSourceEvents(int i) {
+void Transportation1dSolver::pushNewSourceEvents(int i) {
   if (i == 0) {
     return;
   }
@@ -114,23 +117,27 @@ void Transportation1d::pushNewSourceEvents(int i) {
   for (int j = b; j < e; ++j) {
     long long pos = D[j + 1] - S[i];
     long long d = delta(i - 1, j);
-    events.emplace(pos, d);
+    if (pos > 0LL) {
+      events.emplace(pos, d);
+    }
   }
 }
 
-void Transportation1d::pushNewSinkEvents(int i, int j) {
+void Transportation1dSolver::pushNewSinkEvents(int i, int j) {
   if (j <= lastOccupiedSink) {
     return;
   }
   for (int l = lastOccupiedSink; l < j; ++l) {
     long long pos = std::min(D[l + 1] - S[i], lastPosition);
     long long d = cost(i, l) - cost(i, l + 1);
-    events.emplace(pos, d);
+    if (pos > 0LL) {
+      events.emplace(pos, d);
+    }
   }
   lastOccupiedSink = j;
 }
 
-long long Transportation1d::getSlope(bool pop) {
+long long Transportation1dSolver::getSlope(bool pop) {
   long long slope = 0LL;
   while (!events.empty() && events.top().first == lastPosition) {
     slope += events.top().second;
@@ -142,8 +149,7 @@ long long Transportation1d::getSlope(bool pop) {
   return slope;
 }
 
-Transportation1d::Solution Transportation1d::computeSolution() {
-  flushPositions();
+Transportation1dSolver::Solution Transportation1dSolver::computeSolution() {
   std::vector<std::tuple<int, int, long long>> ret;
   int i = 0;
   int j = 0;
@@ -166,7 +172,7 @@ Transportation1d::Solution Transportation1d::computeSolution() {
   return ret;
 }
 
-void Transportation1d::checkSolutionValid(const Solution &alloc) const {
+void Transportation1dSolver::checkSolutionValid(const Solution &alloc) const {
   // Compute capacity usage
   std::vector<long long> usedSupply(nbSources());
   std::vector<long long> usedDemand(nbSinks());
@@ -189,7 +195,7 @@ void Transportation1d::checkSolutionValid(const Solution &alloc) const {
   }
 }
 
-void Transportation1d::checkSolutionOptimal(const Solution &alloc) const {
+void Transportation1dSolver::checkSolutionOptimal(const Solution &alloc) const {
   // Compute capacity usage
   std::vector<long long> usedCap(nbSinks());
   for (auto [i, j, a] : alloc) {
@@ -253,7 +259,7 @@ void Transportation1d::checkSolutionOptimal(const Solution &alloc) const {
   }
 }
 
-void Transportation1d::check() const {
+void Transportation1dSolver::check() const {
   if (u.size() != nbSources()) {
     throw std::runtime_error("Inconsistant source positions");
   }
@@ -285,18 +291,22 @@ void Transportation1d::check() const {
   if (totalSupply() > totalDemand()) {
     throw std::runtime_error("The supply should be no larger than the demand");
   }
-  if (!std::is_sorted(u.begin(), u.end())) {
-    throw std::runtime_error("Source positions should be sorted");
+  for (int i = 0; i + 1 < nbSources(); ++i) {
+    if (u[i + 1] <= u[i]) {
+      throw std::runtime_error("Source positions should be strictly sorted");
+    }
   }
-  if (!std::is_sorted(v.begin(), v.end())) {
-    throw std::runtime_error("Sink positions should be sorted");
+  for (int i = 0; i + 1 < nbSinks(); ++i) {
+    if (v[i + 1] <= v[i]) {
+      throw std::runtime_error("Sink positions should be strictly sorted");
+    }
   }
   if (p.size() > nbSources()) {
     throw std::runtime_error("Too many positions computed");
   }
 }
 
-Transportation1d Transportation1d::read(std::istream &f) {
+Transportation1dSolver Transportation1dSolver::read(std::istream &f) {
   int nbSources;
   int nbSinks;
   f >> nbSources >> nbSinks;
@@ -318,10 +328,12 @@ Transportation1d Transportation1d::read(std::istream &f) {
     f >> x;
     d.push_back(x);
   }
-  return Transportation1d(u, v, s, d);
+  return Transportation1dSolver(std::move(u), std::move(v), std::move(s),
+                                std::move(d));
 }
 
-Transportation1d::Solution Transportation1d::readSolution(std::istream &f) {
+Transportation1dSolver::Solution Transportation1dSolver::readSolution(
+    std::istream &f) {
   int nbElements;
   f >> nbElements;
   Solution ret;
@@ -334,7 +346,7 @@ Transportation1d::Solution Transportation1d::readSolution(std::istream &f) {
   return ret;
 }
 
-void Transportation1d::write(std::ostream &f) const {
+void Transportation1dSolver::write(std::ostream &f) const {
   f << nbSources() << " " << nbSinks() << std::endl;
   for (int i = 0; i < nbSources(); ++i) {
     if (i > 0) f << " ";
@@ -358,7 +370,8 @@ void Transportation1d::write(std::ostream &f) const {
   f << std::endl;
 }
 
-void Transportation1d::writeSolution(const Solution &sol, std::ostream &f) {
+void Transportation1dSolver::writeSolution(const Solution &sol,
+                                           std::ostream &f) {
   f << sol.size() << std::endl;
   for (auto [i, j, a] : sol) {
     f << i << " " << j << " " << a << std::endl;

@@ -4,10 +4,44 @@
 #include <tuple>
 #include <vector>
 
+class Transportation1d;
+class Transportation1dSolver;
+
 /**
  * @brief A transportation solver for unidimensional optimal transport
  */
 class Transportation1d {
+ public:
+  using Solution = std::vector<std::tuple<int, int, long long>>;
+
+  /**
+   * @brief Solve a 1D transportation problem
+   */
+  Solution solve(const std::vector<long long> &u,
+                 const std::vector<long long> &v,
+                 const std::vector<long long> &s,
+                 const std::vector<long long> &d);
+
+  /**
+   * Give a rounded solution for a 1D transportation problem
+   */
+  std::vector<int> assign(const std::vector<long long> &u,
+                          const std::vector<long long> &v,
+                          const std::vector<long long> &s,
+                          const std::vector<long long> &d);
+
+ private:
+  /**
+   * @brief Preprocess so as to have sorted unique positions
+   */
+  Transportation1dSolver preprocess();
+};
+
+/**
+ * @brief Implementation of the transportation solver for unidimensional optimal
+ * transport
+ */
+class Transportation1dSolver {
  public:
   using Solution = std::vector<std::tuple<int, int, long long>>;
   using Event = std::pair<long long, long long>;
@@ -20,10 +54,10 @@ class Transportation1d {
    * @param s Source supplies
    * @param d Sink demands
    */
-  Transportation1d(const std::vector<long long> &u,
-                   const std::vector<long long> &v,
-                   const std::vector<long long> &s,
-                   const std::vector<long long> &d);
+  Transportation1dSolver(std::vector<long long> &&u,
+                         std::vector<long long> &&v,
+                         std::vector<long long> &&s,
+                         std::vector<long long> &&d);
 
   /**
    * @brief Number of sources in the problem
@@ -85,7 +119,7 @@ class Transportation1d {
   /**
    * @brief Read a serialized problem
    */
-  static Transportation1d read(std::istream &f);
+  static Transportation1dSolver read(std::istream &f);
 
   /**
    * @brief Read a serialized solution

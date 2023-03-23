@@ -11,8 +11,7 @@ class Transportation1d {
  public:
   using Solution = std::vector<std::tuple<int, int, long long>>;
   using Event = std::pair<long long, long long>;
-  using PrioQueue =
-      std::priority_queue<Event, std::vector<Event>, std::greater<Event>>;
+  using PrioQueue = std::priority_queue<Event>;
   /**
    * @brief Initialize the datastructure
    *
@@ -94,6 +93,11 @@ class Transportation1d {
   static Transportation1d read(std::istream &f);
 
   /**
+   * @brief Read a serialized solution
+   */
+  static Solution readSolution(std::istream &f);
+
+  /**
    * @brief Write a serialized problem
    */
   void write(std::ostream &f) const;
@@ -156,8 +160,8 @@ class Transportation1d {
 
   /**
    * @brief Get the reduced cost at the current position
-  */
-  long long getSlope(bool pop=false);
+   */
+  long long getSlope(bool pop = false);
 
  private:
   // Problem data

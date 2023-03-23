@@ -16,7 +16,6 @@ Transportation1d::Transportation1d(const std::vector<long long> &u,
                                    const std::vector<long long> &d)
     : u(u), v(v), s(s), d(d) {
   setupData();
-  check();
 }
 
 void Transportation1d::setupData() {
@@ -34,7 +33,7 @@ void Transportation1d::setupData() {
 
 void Transportation1d::flushPositions() {
   // Flush constraints from the right
-  long long maxPos = totalDemand() - totalSupply();
+  long long maxPos = totalDemand() - S[p.size()];
   for (int i = p.size() - 1; i >= 0; --i) {
     maxPos = std::min(p[i], maxPos);
     p[i] = maxPos;
@@ -333,6 +332,19 @@ Transportation1d Transportation1d::read(std::istream &f) {
     d.push_back(x);
   }
   return Transportation1d(u, v, s, d);
+}
+
+Transportation1d::Solution Transportation1d::readSolution(std::istream &f) {
+  int nbElements;
+  f >> nbElements;
+  Solution ret;
+  for (int k = 0; k < nbElements; ++k) {
+    int i, j;
+    long long a;
+    f >> i >> j >> a;
+    ret.emplace_back(i, j, a);
+  }
+  return ret;
 }
 
 void Transportation1d::write(std::ostream &f) const {

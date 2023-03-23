@@ -49,9 +49,9 @@ class TransportationProblem:
         assert len(self.prev_demand) == self.nb_sinks + 1
         # Strictly sorted
         for i in range(len(self.source_pos) - 1):
-            assert self.source_pos[i] < self.source_pos[i + 1]
+            assert self.source_pos[i] <= self.source_pos[i + 1]
         for i in range(len(self.sink_pos) - 1):
-            assert self.sink_pos[i] < self.sink_pos[i + 1]
+            assert self.sink_pos[i] <= self.sink_pos[i + 1]
         # Positive supply/demand
         assert all(d > 0 for d in self.source_supply)
         assert all(d > 0 for d in self.sink_demand)

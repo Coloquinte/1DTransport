@@ -48,14 +48,21 @@ void Transportation1dSolver::updateOptimalSink(int i) {
 }
 
 Transportation1dSolver::Solution Transportation1dSolver::solve() {
+  // Clear and reserve containers
   p.clear();
   p.reserve(nbSources());
-  events = PrioQueue();
+  std::vector<Event> res;
+  res.reserve(nbSources() + nbSinks());
+  events = PrioQueue(std::less<Event>(), std::move(res));
+  // Initialize counters
   lastPosition = 0LL;
   lastOccupiedSink = 0;
+  optimalSink = 0;
+  // Algorithm
   for (int i = 0; i < nbSources(); ++i) {
     push(i);
   }
+  // Finalize
   flushPositions();
   return computeSolution();
 }
@@ -292,13 +299,13 @@ void Transportation1dSolver::check() const {
     throw std::runtime_error("The supply should be no larger than the demand");
   }
   for (int i = 0; i + 1 < nbSources(); ++i) {
-    if (u[i + 1] <= u[i]) {
-      throw std::runtime_error("Source positions should be strictly sorted");
+    if (u[i + 1] < u[i]) {
+      throw std::runtime_error("Source positions should be sorted");
     }
   }
   for (int i = 0; i + 1 < nbSinks(); ++i) {
-    if (v[i + 1] <= v[i]) {
-      throw std::runtime_error("Sink positions should be strictly sorted");
+    if (v[i + 1] < v[i]) {
+      throw std::runtime_error("Sink positions should be sorted");
     }
   }
   if (p.size() > nbSources()) {

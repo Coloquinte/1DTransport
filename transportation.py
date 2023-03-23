@@ -1,5 +1,6 @@
 import numpy as np
 import heapq
+import math
 import bisect
 
 
@@ -19,7 +20,10 @@ class TransportationProblem:
         self.nb_sinks = len(self.sink_pos)
         self.total_supply = np.sum(self.source_supply)
         self.total_demand = np.sum(self.sink_demand)
-        self.sink_mid = [(self.sink_pos[i] + self.sink_pos[i+1]) // 2 for i in range(self.nb_sinks - 1)]
+        self.sink_mid = [
+            (self.sink_pos[i] + self.sink_pos[i + 1]) // 2
+            for i in range(self.nb_sinks - 1)
+        ]
         self.check()
 
     def check(self):
@@ -45,9 +49,9 @@ class TransportationProblem:
         assert len(self.prev_demand) == self.nb_sinks + 1
         # Strictly sorted
         for i in range(len(self.source_pos) - 1):
-            assert self.source_pos[i] < self.source_pos[i+1]
+            assert self.source_pos[i] < self.source_pos[i + 1]
         for i in range(len(self.sink_pos) - 1):
-            assert self.sink_pos[i] < self.sink_pos[i+1]
+            assert self.sink_pos[i] < self.sink_pos[i + 1]
         # Positive supply/demand
         assert all(d > 0 for d in self.source_supply)
         assert all(d > 0 for d in self.sink_demand)
@@ -99,17 +103,22 @@ class TransportationProblem:
 
     @staticmethod
     def make_random(
-        n, m, tot_supply=None, tot_demand=None, coord_range=None, seed=None
+        n, m, supply_ratio=10.0, demand_ratio=15.0, coord_ratio=10.0, seed=None
     ):
         """
         Create a random problem
         """
-        if tot_supply is None:
-            tot_supply = 10 * (n + m)
-        if tot_demand is None:
-            tot_demand = 15 * (n + m)
-        if coord_range is None:
-            coord_range = 10 * (n + m)
+        if coord_ratio < 1.0:
+            raise RuntimeError("Should have coords per element larger than 1")
+        if supply_ratio < 1.0 or demand_ratio < 1.0:
+            raise RuntimeError(
+                "Should have supply and demand per element larger than 1"
+            )
+        if supply_ratio > demand_ratio:
+            raise RuntimeError("Should have larger demand than supply")
+        tot_supply = math.ceil(supply_ratio * (n + m))
+        tot_demand = math.ceil(demand_ratio * (n + m))
+        coord_range = math.ceil(coord_ratio * (n + m))
         assert coord_range >= n
         assert coord_range >= m
         assert tot_supply >= n
@@ -122,6 +131,18 @@ class TransportationProblem:
         s = TransportationProblem._make_random_capa(rng, n, tot_supply).tolist()
         d = TransportationProblem._make_random_capa(rng, m, tot_demand).tolist()
         return TransportationProblem(u, v, s, d)
+
+    def to_string(self):
+        us = " ".join(str(i) for i in self.source_pos)
+        vs = " ".join(str(i) for i in self.sink_pos)
+        ss = " ".join(str(i) for i in self.source_supply)
+        ds = " ".join(str(i) for i in self.sink_demand)
+        return f"{self.nb_sources} {self.nb_sinks}\n{us}\n{vs}\n{ss}\n{ds}\n"
+
+    @staticmethod
+    def sparse_solution_to_string(sol):
+        s = "\n".join(f"{i} {j} {a}" for i, j, a in sol)
+        return f"{len(sol)}\n{s}"
 
     @staticmethod
     def _make_random_capa(rng, n, tot):
@@ -468,3 +489,50 @@ class FastSolver(TransportationProblem):
             pos = min(pos, self.last_position)
             heapq.heappush(self.events, (-pos, d))
         self.last_occupied_sink = j
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Generate and solve a transportation problem",
+    )
+    parser.add_argument("--sources", help="Number of sources", type=int, default=20)
+    parser.add_argument("--sinks", help="Number of sinks", type=int, default=20)
+    parser.add_argument(
+        "--avg-supply", help="Average supply per element", type=float, default=10.0
+    )
+    parser.add_argument(
+        "--avg-demand", help="Average demand per element", type=float, default=15.0
+    )
+    parser.add_argument(
+        "--avg-coords", help="Average coordinates per element", type=float, default=10.0
+    )
+    parser.add_argument("--seed", help="Random seed", type=int)
+    parser.add_argument(
+        "--solve", help="Solve and write the solution", action="store_true"
+    )
+    parser.add_argument(
+        "--check", help="Check the solution against another solver", action="store_true"
+    )
+
+    args = parser.parse_args()
+
+    pb = TransportationProblem.make_random(
+        args.sources,
+        args.sinks,
+        supply_ratio=args.avg_supply,
+        demand_ratio=args.avg_demand,
+        coord_ratio=args.avg_coords,
+        seed=args.seed,
+    )
+    print(pb.to_string())
+    if args.solve or args.check:
+        sol = pb.solve()
+        pb.check_sparse_solution(sol)
+        if args.solve:
+            print(TransportationProblem.sparse_solution_to_string(sol))
+        if args.check:
+            expected = pb.dense_to_sparse(pb.solve_baseline())
+            if pb.sparse_solution_cost(sol) != pb.sparse_solution_cost(expected):
+                raise RuntimeError("The solution does not match the expected objective")

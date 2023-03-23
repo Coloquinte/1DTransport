@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -49,12 +50,97 @@ int Transportation1d::optimalSink(int i) const {
 }
 
 Transportation1d::Solution Transportation1d::solve() {
-  
+  p.clear();
+  p.reserve(nbSources());
+  events = PrioQueue();
+  lastPosition = 0LL;
+  lastOccupiedSink = 0;
+  for (int i = 0; i < nbSources(); ++i) {
+    push(i);
+  }
   return computeSolution();
 }
 
-Transportation1d::Solution
-Transportation1d::computeSolution() {
+void Transportation1d::push(int i) {
+  int o = optimalSink(i);
+  pushNewSourceEvents(i);
+  lastPosition = std::max(lastPosition, D[o] - S[i]);
+  pushNewSinkEvents(i, o);
+  while (lastPosition > D[lastOccupiedSink + 1] - S[i + 1]) {
+    pushOnce(i);
+  }
+  p.push_back(lastPosition);
+}
+
+void Transportation1d::pushOnce(int i) {
+  int j = lastOccupiedSink;
+  if (j == nbSinks() - 1) {
+    pushToLastSink(i);
+  } else if (lastPosition == 0LL) {
+    pushToNewSink(i);
+  } else {
+    long long reducedCostRight = cost(i, j + 1);
+    long long reducedCostLeft = getSlope() + cost(i, j);
+    if (reducedCostLeft >= reducedCostRight) {
+      pushToNewSink(i);
+    } else {
+      pushToLastSink(i);
+    }
+  }
+}
+
+void Transportation1d::pushToLastSink(int i) {
+  int j = lastOccupiedSink;
+  long long minPos = std::max(D[j + 1] - S[i + 1], 0LL);
+  long long slope = getSlope(true);
+  if (events.empty()) {
+    lastPosition = minPos;
+  } else {
+    lastPosition = std::max(minPos, events.top().first);
+  }
+  events.emplace(lastPosition, slope);
+}
+
+void Transportation1d::pushToNewSink(int i) {
+  pushNewSinkEvents(i, lastOccupiedSink + 1);
+}
+
+void Transportation1d::pushNewSourceEvents(int i) {
+  if (i == 0) {
+    return;
+  }
+  for (int j = 0; j < lastOccupiedSink; ++j) {
+    long long pos = D[j + 1] - S[i];
+    long long d = delta(i - 1, j);
+    events.emplace(pos, d);
+  }
+}
+
+void Transportation1d::pushNewSinkEvents(int i, int j) {
+  if (j <= lastOccupiedSink) {
+    return;
+  }
+  for (int l = lastOccupiedSink; l < j; ++l) {
+    long long pos = std::min(D[l + 1] - S[i], lastPosition);
+    long long d = cost(i, l) - cost(i, l + 1);
+    events.emplace(pos, d);
+  }
+  lastOccupiedSink = j;
+}
+
+long long Transportation1d::getSlope(bool pop) {
+  long long slope = 0LL;
+  while (!events.empty() && events.top().first == lastPosition) {
+    slope += events.top().second;
+    events.pop();
+  }
+  if (!pop && slope != 0) {
+    events.emplace(lastPosition, slope);
+  }
+  return slope;
+}
+
+Transportation1d::Solution Transportation1d::computeSolution() {
   flushPositions();
   std::vector<std::tuple<int, int, long long>> ret;
   int i = 0;

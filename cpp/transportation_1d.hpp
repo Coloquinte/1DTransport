@@ -9,9 +9,10 @@
  */
 class Transportation1d {
  public:
-  using Solution = std::vector<std::tuple<int, int, long long> >;
+  using Solution = std::vector<std::tuple<int, int, long long>>;
   using Event = std::pair<long long, long long>;
-  using PrioQueue = std::priority_queue<Event, std::vector<Event>, std::greater<Event>>;
+  using PrioQueue =
+      std::priority_queue<Event, std::vector<Event>, std::greater<Event>>;
   /**
    * @brief Initialize the datastructure
    *
@@ -123,6 +124,41 @@ class Transportation1d {
    */
   Solution computeSolution();
 
+  /**
+   * @brief Push a single source
+   */
+  void push(int i);
+
+  /**
+   * @brief Push a single source
+   */
+  void pushOnce(int i);
+
+  /**
+   * @brief Push to the last sink to be used
+   */
+  void pushToLastSink(int i);
+
+  /**
+   * @brief Push to the next sink to be used
+   */
+  void pushToNewSink(int i);
+
+  /**
+   * @brief Push the events corresponding to a given source
+   */
+  void pushNewSourceEvents(int i);
+
+  /**
+   * @brief Push the events corresponding to entering a new sink
+   */
+  void pushNewSinkEvents(int i, int j);
+
+  /**
+   * @brief Get the reduced cost at the current position
+  */
+  long long getSlope(bool pop=false);
+
  private:
   // Problem data
   std::vector<long long> u;
@@ -137,4 +173,6 @@ class Transportation1d {
   // Solution and state
   std::vector<long long> p;
   PrioQueue events;
+  long long lastPosition;
+  int lastOccupiedSink;
 };

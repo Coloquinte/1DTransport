@@ -9,6 +9,90 @@
 #include <queue>
 #include <stdexcept>
 
+Transportation1d::Transportation1d(const std::vector<long long> &u,
+                                   const std::vector<long long> &v,
+                                   const std::vector<long long> &s,
+                                   const std::vector<long long> &d) {
+  // Sort the sources and sinks
+  std::vector<std::pair<long long, long long>> srcSort;
+  srcSort.reserve(u.size());
+  for (long long i = 0; i < u.size(); ++i) {
+    srcSort.emplace_back(u[i], i);
+  }
+  std::sort(srcSort.begin(), srcSort.end());
+  std::vector<std::pair<long long, long long>> snkSort;
+  snkSort.reserve(v.size());
+  for (long long i = 0; i < v.size(); ++i) {
+    snkSort.emplace_back(v[i], i);
+  }
+  std::sort(snkSort.begin(), snkSort.end());
+
+  srcOrder.reserve(srcSort.size());
+  for (auto p : srcSort) {
+    srcOrder.push_back(p.second);
+  }
+  snkOrder.reserve(snkSort.size());
+  for (auto p : snkSort) {
+    snkOrder.push_back(p.second);
+  }
+
+  su.reserve(u.size());
+  sv.reserve(v.size());
+  ss.reserve(s.size());
+  sd.reserve(d.size());
+  for (int i : srcOrder) {
+    su.push_back(u[i]);
+    ss.push_back(s[i]);
+  }
+  for (int i : snkOrder) {
+    sv.push_back(v[i]);
+    sd.push_back(d[i]);
+  }
+}
+
+Transportation1d::Solution Transportation1d::convertSolution(
+    const Solution &sol) {
+  Solution ret;
+  ret.reserve(sol.size());
+  for (auto [i, j, a] : sol) {
+    ret.emplace_back(srcOrder[i], snkOrder[j], a);
+  }
+  return ret;
+}
+
+std::vector<int> Transportation1d::convertAssignment(
+    const std::vector<int> &a) {
+  std::vector<int> ret;
+  ret.resize(a.size());
+  for (int i = 0; i < a.size(); ++i) {
+    ret[srcOrder[i]] = snkOrder[ret[i]];
+  }
+  return ret;
+}
+
+Transportation1d::Solution Transportation1d::solve(
+    const std::vector<long long> &u, const std::vector<long long> &v,
+    const std::vector<long long> &s, const std::vector<long long> &d) {
+  Transportation1d pb(u, v, s, d);
+  Transportation1dSolver solver(std::move(pb.su), std::move(pb.sv),
+                                std::move(pb.ss), std::move(pb.sd));
+  solver.run();
+  Solution sol = solver.computeSolution();
+  return pb.convertSolution(sol);
+}
+
+std::vector<int> Transportation1d::assign(const std::vector<long long> &u,
+                                          const std::vector<long long> &v,
+                                          const std::vector<long long> &s,
+                                          const std::vector<long long> &d) {
+  Transportation1d pb(u, v, s, d);
+  Transportation1dSolver solver(std::move(pb.su), std::move(pb.sv),
+                                std::move(pb.ss), std::move(pb.sd));
+  solver.run();
+  std::vector<int> sol = solver.computeAssignment();
+  return pb.convertAssignment(sol);
+}
+
 Transportation1dSolver::Transportation1dSolver(std::vector<long long> &&u,
                                                std::vector<long long> &&v,
                                                std::vector<long long> &&s,
@@ -47,7 +131,7 @@ void Transportation1dSolver::updateOptimalSink(int i) {
   optimalSink = j;
 }
 
-Transportation1dSolver::Solution Transportation1dSolver::solve() {
+void Transportation1dSolver::run() {
   // Clear and reserve containers
   p.clear();
   p.reserve(nbSources());
@@ -64,7 +148,6 @@ Transportation1dSolver::Solution Transportation1dSolver::solve() {
   }
   // Finalize
   flushPositions();
-  return computeSolution();
 }
 
 void Transportation1dSolver::push(int i) {
@@ -156,7 +239,8 @@ long long Transportation1dSolver::getSlope(bool pop) {
   return slope;
 }
 
-Transportation1dSolver::Solution Transportation1dSolver::computeSolution() {
+Transportation1dSolver::Solution Transportation1dSolver::computeSolution()
+    const {
   std::vector<std::tuple<int, int, long long>> ret;
   int i = 0;
   int j = 0;
@@ -175,6 +259,20 @@ Transportation1dSolver::Solution Transportation1dSolver::computeSolution() {
     } else {
       ++j;
     }
+  }
+  return ret;
+}
+
+std::vector<int> Transportation1dSolver::computeAssignment() const {
+  std::vector<int> ret(p.size());
+  int currentSink = 0;
+  for (int i = 0; i < p.size(); ++i) {
+    // Position of the middle of the source
+    long long assignPos = p[i] + S[i] + s[i] / 2;
+    while (D[currentSink + 1] <= assignPos) {
+      ++currentSink;
+    }
+    ret[i] = currentSink;
   }
   return ret;
 }

@@ -32,9 +32,31 @@ class Transportation1d {
 
  private:
   /**
-   * @brief Preprocess so as to have sorted unique positions
+   * @brief Initialize the datastructure
    */
-  Transportation1dSolver preprocess();
+  Transportation1d(const std::vector<long long> &u,
+                   const std::vector<long long> &v,
+                   const std::vector<long long> &s,
+                   const std::vector<long long> &d);
+
+  /**
+   * Convert back a solution given by the solver through preprocessing
+   */
+  Solution convertSolution(const Solution &sol);
+
+  /**
+   * Convert back an assignment given by the solver through preprocessing
+   */
+  std::vector<int> convertAssignment(const std::vector<int> &a);
+
+ private:
+  std::vector<long long> su;
+  std::vector<long long> sv;
+  std::vector<long long> ss;
+  std::vector<long long> sd;
+
+  std::vector<int> srcOrder;
+  std::vector<int> snkOrder;
 };
 
 /**
@@ -54,8 +76,7 @@ class Transportation1dSolver {
    * @param s Source supplies
    * @param d Sink demands
    */
-  Transportation1dSolver(std::vector<long long> &&u,
-                         std::vector<long long> &&v,
+  Transportation1dSolver(std::vector<long long> &&u, std::vector<long long> &&v,
                          std::vector<long long> &&s,
                          std::vector<long long> &&d);
 
@@ -94,7 +115,17 @@ class Transportation1dSolver {
   /**
    * @brief Run the whole optimization with efficient algorithm
    */
-  Solution solve();
+  void run();
+
+  /**
+   * @brief Obtain the current solution
+   */
+  Solution computeSolution() const;
+
+  /**
+   * @brief Obtain an assignment close to the fractional solution
+   */
+  std::vector<int> computeAssignment() const;
 
   /**
    * @brief Compute the cost of a solution
@@ -146,11 +177,6 @@ class Transportation1dSolver {
    * @brief Flush the positions according to the non-overlap constraints
    */
   void flushPositions();
-
-  /**
-   * @brief Compute the current solution
-   */
-  Solution computeSolution();
 
   /**
    * @brief Push a single source

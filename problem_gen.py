@@ -167,7 +167,9 @@ class BaselineSolver(TransportationProblem):
             for j in range(m):
                 if n + j not in flow[i]:
                     continue
-                x.append((i, j, flow[i][n + j]))
+                a = flow[i][n + j]
+                if a > 0:
+                    x.append((i, j, a))
         self.check_solution(x)
         return x
 

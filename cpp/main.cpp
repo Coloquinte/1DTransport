@@ -8,6 +8,7 @@ int main() {
   Transportation1d pb = Transportation1d::read(std::cin);
   Transportation1d::Solution expected =
       Transportation1d::readSolution(std::cin);
+  pb.checkSolutionValid(expected);
   pb.check();
   auto sol = pb.solve();
   pb.checkSolutionValid(sol);

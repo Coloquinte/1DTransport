@@ -16,13 +16,17 @@ Transportation1dSorter::Transportation1dSorter(
   std::vector<std::pair<long long, long long>> srcSort;
   srcSort.reserve(u.size());
   for (long long i = 0; i < u.size(); ++i) {
-    srcSort.emplace_back(u[i], i);
+    if (s[i] > 0LL) {
+      srcSort.emplace_back(u[i], i);
+    }
   }
   std::sort(srcSort.begin(), srcSort.end());
   std::vector<std::pair<long long, long long>> snkSort;
   snkSort.reserve(v.size());
   for (long long i = 0; i < v.size(); ++i) {
-    snkSort.emplace_back(v[i], i);
+    if (d[i] > 0LL) {
+      snkSort.emplace_back(v[i], i);
+    }
   }
   std::sort(snkSort.begin(), snkSort.end());
 
@@ -553,7 +557,8 @@ void Transportation1d::writeSolution(const Solution &sol, std::ostream &f) {
   }
 }
 
-void Transportation1d::writeAssignment(const std::vector<int> &sol, std::ostream &f) {
+void Transportation1d::writeAssignment(const std::vector<int> &sol,
+                                       std::ostream &f) {
   f << sol.size() << std::endl;
   for (int i = 0; i < sol.size(); ++i) {
     if (i > 0) f << " ";

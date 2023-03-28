@@ -9,10 +9,9 @@
 #include <queue>
 #include <stdexcept>
 
-Transportation1d::Transportation1d(const std::vector<long long> &u,
-                                   const std::vector<long long> &v,
-                                   const std::vector<long long> &s,
-                                   const std::vector<long long> &d) {
+Transportation1dSorter::Transportation1dSorter(
+    const std::vector<long long> &u, const std::vector<long long> &v,
+    const std::vector<long long> &s, const std::vector<long long> &d) {
   // Sort the sources and sinks
   std::vector<std::pair<long long, long long>> srcSort;
   srcSort.reserve(u.size());
@@ -35,23 +34,29 @@ Transportation1d::Transportation1d(const std::vector<long long> &u,
   for (auto p : snkSort) {
     snkOrder.push_back(p.second);
   }
-
-  su.reserve(u.size());
-  sv.reserve(v.size());
-  ss.reserve(s.size());
-  sd.reserve(d.size());
-  for (int i : srcOrder) {
-    su.push_back(u[i]);
-    ss.push_back(s[i]);
-  }
-  for (int i : snkOrder) {
-    sv.push_back(v[i]);
-    sd.push_back(d[i]);
-  }
 }
 
-Transportation1d::Solution Transportation1d::convertSolution(
-    const Solution &sol) {
+Transportation1dSolver Transportation1dSorter::convert(
+    const Transportation1d &pb) const {
+  std::vector<long long> su, sv, ss, sd;
+  su.reserve(pb.nbSources());
+  sv.reserve(pb.nbSinks());
+  ss.reserve(pb.nbSources());
+  sd.reserve(pb.nbSinks());
+  for (int i : srcOrder) {
+    su.push_back(pb.u[i]);
+    ss.push_back(pb.s[i]);
+  }
+  for (int i : snkOrder) {
+    sv.push_back(pb.v[i]);
+    sd.push_back(pb.d[i]);
+  }
+  return Transportation1dSolver(std::move(su), std::move(sv), std::move(ss),
+                                std::move(sd));
+}
+
+Transportation1dSorter::Solution Transportation1dSorter::convertSolutionBack(
+    const Solution &sol) const {
   Solution ret;
   ret.reserve(sol.size());
   for (auto [i, j, a] : sol) {
@@ -60,44 +65,68 @@ Transportation1d::Solution Transportation1d::convertSolution(
   return ret;
 }
 
-std::vector<int> Transportation1d::convertAssignment(
-    const std::vector<int> &a) {
+std::vector<int> Transportation1dSorter::convertAssignmentBack(
+    const std::vector<int> &a) const {
   std::vector<int> ret;
   ret.resize(a.size());
   for (int i = 0; i < a.size(); ++i) {
-    ret[srcOrder[i]] = snkOrder[ret[i]];
+    ret[srcOrder[i]] = snkOrder[a[i]];
   }
   return ret;
 }
 
-Transportation1d::Solution Transportation1d::solve(
-    const std::vector<long long> &u, const std::vector<long long> &v,
-    const std::vector<long long> &s, const std::vector<long long> &d) {
-  Transportation1d pb(u, v, s, d);
-  Transportation1dSolver solver(std::move(pb.su), std::move(pb.sv),
-                                std::move(pb.ss), std::move(pb.sd));
+Transportation1d::Transportation1d(const std::vector<long long> &u,
+                                   const std::vector<long long> &v,
+                                   const std::vector<long long> &s,
+                                   const std::vector<long long> &d)
+    : u(u), v(v), s(s), d(d) {}
+
+Transportation1d::Transportation1d(std::vector<long long> &&u,
+                                   std::vector<long long> &&v,
+                                   std::vector<long long> &&s,
+                                   std::vector<long long> &&d)
+    : u(u), v(v), s(s), d(d) {}
+
+Transportation1d::Solution Transportation1d::solve() {
+  Transportation1dSorter sorter(u, v, s, d);
+  Transportation1dSolver solver = sorter.convert(*this);
+  solver.check();
   solver.run();
   Solution sol = solver.computeSolution();
-  return pb.convertSolution(sol);
+  solver.checkSolutionValid(sol);
+  solver.checkSolutionOptimal(sol);
+  return sorter.convertSolutionBack(sol);
 }
 
-std::vector<int> Transportation1d::assign(const std::vector<long long> &u,
-                                          const std::vector<long long> &v,
-                                          const std::vector<long long> &s,
-                                          const std::vector<long long> &d) {
-  Transportation1d pb(u, v, s, d);
-  Transportation1dSolver solver(std::move(pb.su), std::move(pb.sv),
-                                std::move(pb.ss), std::move(pb.sd));
+std::vector<int> Transportation1d::assign() {
+  Transportation1dSorter sorter(u, v, s, d);
+  Transportation1dSolver solver = sorter.convert(*this);
   solver.run();
   std::vector<int> sol = solver.computeAssignment();
-  return pb.convertAssignment(sol);
+  return sorter.convertAssignmentBack(sol);
+}
+
+long long Transportation1d::totalSupply() const {
+  long long ret = 0LL;
+  for (int i = 0; i < nbSources(); ++i) {
+    ret += s[i];
+  }
+  return ret;
+}
+
+long long Transportation1d::totalDemand() const {
+  long long ret = 0LL;
+  for (int i = 0; i < nbSinks(); ++i) {
+    ret += d[i];
+  }
+  return ret;
 }
 
 Transportation1dSolver::Transportation1dSolver(std::vector<long long> &&u,
                                                std::vector<long long> &&v,
                                                std::vector<long long> &&s,
                                                std::vector<long long> &&d)
-    : u(u), v(v), s(s), d(d) {
+    : Transportation1d(u, v, s, d) {
   setupData();
 }
 
@@ -277,29 +306,6 @@ std::vector<int> Transportation1dSolver::computeAssignment() const {
   return ret;
 }
 
-void Transportation1dSolver::checkSolutionValid(const Solution &alloc) const {
-  // Compute capacity usage
-  std::vector<long long> usedSupply(nbSources());
-  std::vector<long long> usedDemand(nbSinks());
-  for (auto [i, j, a] : alloc) {
-    usedSupply[i] += a;
-    usedDemand[j] += a;
-    if (a <= 0LL) {
-      throw std::runtime_error("Allocation should be positive");
-    }
-  }
-  for (int i = 0; i < nbSources(); ++i) {
-    if (usedSupply[i] != s[i]) {
-      throw std::runtime_error("Supply is not met");
-    }
-  }
-  for (int j = 0; j < nbSinks(); ++j) {
-    if (usedDemand[j] > d[j]) {
-      throw std::runtime_error("Demand is not met");
-    }
-  }
-}
-
 void Transportation1dSolver::checkSolutionOptimal(const Solution &alloc) const {
   // Compute capacity usage
   std::vector<long long> usedCap(nbSinks());
@@ -365,6 +371,21 @@ void Transportation1dSolver::checkSolutionOptimal(const Solution &alloc) const {
 }
 
 void Transportation1dSolver::check() const {
+  Transportation1d::check();
+  if (S.size() != nbSources() + 1) {
+    throw std::runtime_error("Inconsistant total supplies");
+  }
+  if (D.size() != nbSinks() + 1) {
+    throw std::runtime_error("Inconsistant total demands");
+  }
+  if (p.size() > nbSources()) {
+    throw std::runtime_error("Too many positions computed");
+  }
+  Transportation1d::checkSorted();
+  Transportation1d::checkNonZeroCapacities();
+}
+
+void Transportation1d::check() const {
   if (u.size() != nbSources()) {
     throw std::runtime_error("Inconsistant source positions");
   }
@@ -377,25 +398,35 @@ void Transportation1dSolver::check() const {
   if (d.size() != nbSinks()) {
     throw std::runtime_error("Inconsistant demands");
   }
-  if (S.size() != nbSources() + 1) {
-    throw std::runtime_error("Inconsistant total supplies");
-  }
-  if (D.size() != nbSinks() + 1) {
-    throw std::runtime_error("Inconsistant total demands");
-  }
   for (long long c : s) {
-    if (c <= 0) {
-      throw std::runtime_error("Supplies must be positive");
+    if (c < 0) {
+      throw std::runtime_error("Supplies must be non-negative");
     }
   }
   for (long long c : d) {
-    if (c <= 0) {
-      throw std::runtime_error("Demands must be positive");
+    if (c < 0) {
+      throw std::runtime_error("Demands must be non-negative");
     }
   }
   if (totalSupply() > totalDemand()) {
     throw std::runtime_error("The supply should be no larger than the demand");
   }
+}
+
+void Transportation1d::checkNonZeroCapacities() const {
+  for (long long c : s) {
+    if (c == 0) {
+      throw std::runtime_error("Supplies must be non-zero");
+    }
+  }
+  for (long long c : d) {
+    if (c == 0) {
+      throw std::runtime_error("Demands must be non-zero");
+    }
+  }
+}
+
+void Transportation1d::checkSorted() const {
   for (int i = 0; i + 1 < nbSources(); ++i) {
     if (u[i + 1] < u[i]) {
       throw std::runtime_error("Source positions should be sorted");
@@ -406,12 +437,53 @@ void Transportation1dSolver::check() const {
       throw std::runtime_error("Sink positions should be sorted");
     }
   }
-  if (p.size() > nbSources()) {
-    throw std::runtime_error("Too many positions computed");
+}
+
+void Transportation1d::checkStrictlySorted() const {
+  for (int i = 0; i + 1 < nbSources(); ++i) {
+    if (u[i + 1] <= u[i]) {
+      throw std::runtime_error("Source positions should be sorted");
+    }
+  }
+  for (int i = 0; i + 1 < nbSinks(); ++i) {
+    if (v[i + 1] <= v[i]) {
+      throw std::runtime_error("Sink positions should be sorted");
+    }
   }
 }
 
-Transportation1dSolver Transportation1dSolver::read(std::istream &f) {
+void Transportation1d::checkSolutionValid(const Solution &alloc) const {
+  // Compute capacity usage
+  std::vector<long long> usedSupply(nbSources());
+  std::vector<long long> usedDemand(nbSinks());
+  for (auto [i, j, a] : alloc) {
+    usedSupply[i] += a;
+    usedDemand[j] += a;
+    if (a <= 0LL) {
+      throw std::runtime_error("Allocation should be positive");
+    }
+  }
+  for (int i = 0; i < nbSources(); ++i) {
+    if (usedSupply[i] != s[i]) {
+      throw std::runtime_error("Supply is not met");
+    }
+  }
+  for (int j = 0; j < nbSinks(); ++j) {
+    if (usedDemand[j] > d[j]) {
+      throw std::runtime_error("Demand is not met");
+    }
+  }
+}
+
+long long Transportation1d::cost(const Solution &alloc) const {
+  long long ret = 0LL;
+  for (auto [i, j, a] : alloc) {
+    ret += a * cost(i, j);
+  }
+  return ret;
+}
+
+Transportation1d Transportation1d::read(std::istream &f) {
   int nbSources;
   int nbSinks;
   f >> nbSources >> nbSinks;
@@ -433,12 +505,11 @@ Transportation1dSolver Transportation1dSolver::read(std::istream &f) {
     f >> x;
     d.push_back(x);
   }
-  return Transportation1dSolver(std::move(u), std::move(v), std::move(s),
-                                std::move(d));
+  return Transportation1d(std::move(u), std::move(v), std::move(s),
+                          std::move(d));
 }
 
-Transportation1dSolver::Solution Transportation1dSolver::readSolution(
-    std::istream &f) {
+Transportation1d::Solution Transportation1d::readSolution(std::istream &f) {
   int nbElements;
   f >> nbElements;
   Solution ret;
@@ -451,7 +522,7 @@ Transportation1dSolver::Solution Transportation1dSolver::readSolution(
   return ret;
 }
 
-void Transportation1dSolver::write(std::ostream &f) const {
+void Transportation1d::write(std::ostream &f) const {
   f << nbSources() << " " << nbSinks() << std::endl;
   for (int i = 0; i < nbSources(); ++i) {
     if (i > 0) f << " ";
@@ -475,10 +546,18 @@ void Transportation1dSolver::write(std::ostream &f) const {
   f << std::endl;
 }
 
-void Transportation1dSolver::writeSolution(const Solution &sol,
-                                           std::ostream &f) {
+void Transportation1d::writeSolution(const Solution &sol, std::ostream &f) {
   f << sol.size() << std::endl;
   for (auto [i, j, a] : sol) {
     f << i << " " << j << " " << a << std::endl;
   }
+}
+
+void Transportation1d::writeAssignment(const std::vector<int> &sol, std::ostream &f) {
+  f << sol.size() << std::endl;
+  for (int i = 0; i < sol.size(); ++i) {
+    if (i > 0) f << " ";
+    f << sol[i];
+  }
+  f << std::endl;
 };

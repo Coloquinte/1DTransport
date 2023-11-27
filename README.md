@@ -11,7 +11,7 @@ The algorithm presented here runs in only O(n log n + m log m).
 
 # Using the solver
 
-To use the code, copy the files transportation_1d.hpp and transportation_1d.cpp in your sources.
+To use the code, copy the files transportation\_1d.hpp and transportation\_1d.cpp in your sources.
 Other files are only used for testing.
 
 ```cpp
